@@ -3,6 +3,7 @@ name: Windows CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,4 +25,3 @@ jobs:
         with:
           name: z-transcribe-win-x64
           path: artifacts/win-x64
-
