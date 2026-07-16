@@ -1,0 +1,222 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using ZTranscribe.Core.Models;
+using ZTranscribe.Core.Services;
+
+namespace ZTranscribe.Infrastructure.Zoom;
+
+public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
+{
+    private static readonly Uri ScribeUri = new("https://api.zoom.us/v2/aiservices/scribe/transcribe");
+    private static readonly Uri TranslateUri = new("https://api.zoom.us/v2/aiservices/translator/translate");
+    private static readonly HashSet<HttpStatusCode> Retryable =
+    [HttpStatusCode.TooManyRequests, HttpStatusCode.BadGateway, HttpStatusCode.ServiceUnavailable, HttpStatusCode.GatewayTimeout];
+
+    public async Task<TranscriptDocument> TranscribeAsync(
+        PreparedAudioPart part,
+        string language,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendWithRetryAsync(async () =>
+        {
+            var request = Authorized(HttpMethod.Post, ScribeUri, credentials);
+            var multipart = new MultipartFormDataContent();
+            var stream = File.OpenRead(part.Path);
+            var file = new StreamContent(stream);
+            file.Headers.ContentType = MediaTypeHeaderValue.Parse(part.MimeType);
+            multipart.Add(file, "file", Path.GetFileName(part.Path));
+            multipart.Add(new StringContent(JsonSerializer.Serialize(new
+            {
+                language,
+                word_time_offsets = true,
+                channel_separation = false,
+                timestamps = true,
+                output_format = "json"
+            }), Encoding.UTF8), "config");
+            request.Content = multipart;
+            return request;
+        }, cancellationToken);
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, json, "Zoom Scribe");
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var result = root.TryGetProperty("result", out var value) ? value : root;
+        var text = FirstString(result, "text_display", "text_lexical", "text");
+        var cues = ReadSegments(result, text);
+        return new TranscriptDocument(language, cues, text,
+            FirstString(root, "request_id"), FirstString(root, "model"));
+    }
+
+    public async Task<IReadOnlyList<TranscriptCue>> TranslateCuesAsync(
+        IReadOnlyList<TranscriptCue> cues,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        var translated = new Dictionary<int, string>();
+        foreach (var batch in CueBatches(cues, 3600))
+        {
+            var body = string.Join("\n", batch.Select(x => $"[[[ZT_CUE_{x.Index:000000}]]] {Flatten(x.Text)}"));
+            var translatedText = await TranslateTextAsync(body, sourceLanguage, targetLanguage, credentials, cancellationToken);
+            foreach (Match match in CuePattern().Matches(translatedText))
+                translated[int.Parse(match.Groups[1].Value)] = match.Groups[2].Value.Trim();
+        }
+
+        // A marker can occasionally be changed by the model. Retry those cues individually.
+        foreach (var cue in cues.Where(x => !translated.ContainsKey(x.Index)))
+            translated[cue.Index] = await TranslateTextAsync(cue.Text, sourceLanguage, targetLanguage, credentials, cancellationToken);
+
+        return cues.Select(x => x with { Text = translated[x.Index] }).ToArray();
+    }
+
+    public async Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken)
+    {
+        // Authentication is validated locally here. A paid AI request is intentionally not made.
+        // The first queued job remains the authoritative server-side credential check.
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+        var token = ZoomJwt.Create(credentials);
+        if (token.Count(x => x == '.') != 2) throw new InvalidOperationException("Could not create a Zoom Build token.");
+    }
+
+    private async Task<string> TranslateTextAsync(
+        string text,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendWithRetryAsync(() =>
+        {
+            var request = Authorized(HttpMethod.Post, TranslateUri, credentials);
+            request.Content = JsonContent.Create(new
+            {
+                text,
+                config = new { source_language = sourceLanguage, target_languages = new[] { targetLanguage } },
+                reference_id = $"desktop-{Guid.NewGuid():N}"
+            });
+            return Task.FromResult(request);
+        }, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, json, "Zoom Translator");
+        using var document = JsonDocument.Parse(json);
+        var translations = document.RootElement.GetProperty("result").GetProperty("translations");
+        return translations.GetProperty(targetLanguage).GetString() ?? "";
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        Func<Task<HttpRequestMessage>> requestFactory,
+        CancellationToken cancellationToken)
+    {
+        var delays = new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5) };
+        for (var attempt = 0; ; attempt++)
+        {
+            using var request = await requestFactory();
+            HttpResponseMessage response;
+            try
+            {
+                response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], cancellationToken);
+                continue;
+            }
+            if (!Retryable.Contains(response.StatusCode) || attempt >= delays.Length) return response;
+            var delay = response.Headers.RetryAfter?.Delta ?? delays[attempt];
+            response.Dispose();
+            await Task.Delay(delay, cancellationToken);
+        }
+    }
+
+    private static HttpRequestMessage Authorized(HttpMethod method, Uri uri, ApiCredentials credentials)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ZoomJwt.Create(credentials));
+        return request;
+    }
+
+    private static void EnsureSuccess(HttpResponseMessage response, string body, string service)
+    {
+        if (response.IsSuccessStatusCode) return;
+        var safeBody = body.Length > 800 ? body[..800] : body;
+        throw new ZoomApiException(service, (int)response.StatusCode, safeBody);
+    }
+
+    private static IReadOnlyList<TranscriptCue> ReadSegments(JsonElement result, string fallbackText)
+    {
+        if (!result.TryGetProperty("segments", out var segments) || segments.ValueKind != JsonValueKind.Array)
+            return string.IsNullOrWhiteSpace(fallbackText)
+                ? []
+                : [new TranscriptCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(2), fallbackText)];
+
+        var cues = new List<TranscriptCue>();
+        foreach (var segment in segments.EnumerateArray())
+        {
+            var text = FirstString(segment, "text_display", "text_lexical", "text");
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var start = ReadSeconds(segment, "start", "start_time", "start_sec");
+            var end = ReadSeconds(segment, "end", "end_time", "end_sec");
+            if (end <= start) end = start + 2;
+            cues.Add(new TranscriptCue(cues.Count + 1, TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), text));
+        }
+        return cues;
+    }
+
+    private static double ReadSeconds(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)) return number;
+            if (double.TryParse(value.GetString(), out number)) return number;
+        }
+        return 0;
+    }
+
+    private static string FirstString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString() ?? "";
+        return "";
+    }
+
+    private static IEnumerable<IReadOnlyList<TranscriptCue>> CueBatches(IReadOnlyList<TranscriptCue> cues, int maxLength)
+    {
+        var batch = new List<TranscriptCue>();
+        var current = 0;
+        foreach (var cue in cues)
+        {
+            var size = cue.Text.Length + 30;
+            if (batch.Count > 0 && current + size > maxLength)
+            {
+                yield return batch;
+                batch = [];
+                current = 0;
+            }
+            batch.Add(cue);
+            current += size;
+        }
+        if (batch.Count > 0) yield return batch;
+    }
+
+    private static string Flatten(string text) => string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    [GeneratedRegex(@"\[\[\[\s*ZT_CUE_(\d{6})\s*\]\]\]\s*([\s\S]*?)(?=\s*\[\[\[\s*ZT_CUE_\d{6}\s*\]\]\]|$)")]
+    private static partial Regex CuePattern();
+}
+
+public sealed class ZoomApiException(string service, int statusCode, string responseBody)
+    : Exception($"{service} returned HTTP {statusCode}. {responseBody}")
+{
+    public int StatusCode { get; } = statusCode;
+    public string ResponseBody { get; } = responseBody;
+}
