@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Win32;
@@ -147,4 +148,3 @@ public partial class MainWindow : Window
         MessageBox.Show(this, exception.Message, "Z Transcribe", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 }
-

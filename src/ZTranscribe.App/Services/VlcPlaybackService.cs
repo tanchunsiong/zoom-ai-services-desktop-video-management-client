@@ -1,4 +1,5 @@
 using LibVLCSharp.Shared;
+using System.IO;
 using ZTranscribe.Core.Models;
 
 namespace ZTranscribe.App.Services;
@@ -12,7 +13,7 @@ public sealed class VlcPlaybackService : IDisposable
 
     public VlcPlaybackService()
     {
-        Core.Initialize();
+        LibVLCSharp.Shared.Core.Initialize();
         _libVlc = new LibVLC("--no-video-title-show");
         MediaPlayer = new MediaPlayer(_libVlc);
     }
@@ -40,4 +41,3 @@ public sealed class VlcPlaybackService : IDisposable
         _libVlc.Dispose();
     }
 }
-
