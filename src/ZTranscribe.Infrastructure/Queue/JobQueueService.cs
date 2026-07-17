@@ -25,6 +25,10 @@ public sealed class JobQueueService(
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         foreach (var job in await queueStore.LoadAsync(cancellationToken)) Jobs.Add(job);
+        var missing = Jobs.Where(job => job.DurationSeconds is null && File.Exists(job.SourcePath)).ToArray();
+        if (missing.Length == 0) return;
+        var settings = await settingsStore.LoadAsync(cancellationToken);
+        if (await ProbeDurationsAsync(missing, settings, cancellationToken) > 0) await SaveAsync();
     }
 
     public async Task<int> AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
@@ -46,21 +50,7 @@ public sealed class JobQueueService(
         if (added.Count > 0)
         {
             var settings = await settingsStore.LoadAsync();
-            using var gate = new SemaphoreSlim(4);
-            await Task.WhenAll(added.Select(async job =>
-            {
-                await gate.WaitAsync();
-                try
-                {
-                    var probe = await audioExtractor.ProbeAsync(job.SourcePath, settings, CancellationToken.None);
-                    job.DurationSeconds = probe.Duration.TotalSeconds;
-                }
-                catch
-                {
-                    // Processing reports a full FFprobe error later; adding a file should remain non-blocking.
-                }
-                finally { gate.Release(); }
-            }));
+            await ProbeDurationsAsync(added, settings, CancellationToken.None);
         }
         await SaveAsync();
         return added.Count;
@@ -485,6 +475,36 @@ public sealed class JobQueueService(
         var name = string.Concat(Path.GetFileNameWithoutExtension(job.SourcePath)
             .Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
         return Path.Combine(parent, name);
+    }
+
+    private async Task<int> ProbeDurationsAsync(
+        IReadOnlyCollection<QueueJob> jobs,
+        UserSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var updated = 0;
+        using var gate = new SemaphoreSlim(4);
+        await Task.WhenAll(jobs.Select(async job =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                var probe = await audioExtractor.ProbeAsync(job.SourcePath, settings, cancellationToken);
+                job.DurationSeconds = probe.Duration.TotalSeconds;
+                job.HasAudio = !string.IsNullOrWhiteSpace(probe.AudioCodec);
+                Interlocked.Increment(ref updated);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // Processing reports a full FFprobe error later; importing should remain non-blocking.
+            }
+            finally { gate.Release(); }
+        }));
+        return updated;
     }
 
     private Task SaveAsync() => queueStore.SaveAsync(Jobs);

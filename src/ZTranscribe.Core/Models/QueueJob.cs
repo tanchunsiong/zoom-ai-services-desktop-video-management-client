@@ -34,6 +34,7 @@ public sealed class QueueJob : INotifyPropertyChanged
     private bool _summarize;
     private long _summaryInputCharacters;
     private long _summaryOutputCharacters;
+    private bool? _hasAudio;
     private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -63,6 +64,14 @@ public sealed class QueueJob : INotifyPropertyChanged
         set
         {
             if (Set(ref _durationSeconds, value)) NotifyCostChanged();
+        }
+    }
+    public bool? HasAudio
+    {
+        get => _hasAudio;
+        set
+        {
+            if (Set(ref _hasAudio, value)) NotifyCostChanged();
         }
     }
     public long TranscriptCharacters
@@ -158,6 +167,20 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public bool CanRemove => !CanEnd;
     [JsonIgnore]
+    public string DurationLabel
+    {
+        get
+        {
+            if (DurationSeconds is not { } seconds) return "--";
+            var duration = TimeSpan.FromSeconds(Math.Max(0, seconds));
+            return $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+        }
+    }
+    [JsonIgnore]
+    public string DurationStatusLabel => HasAudio == false
+        ? "Media duration; no audio stream detected"
+        : DurationSeconds is null ? "Duration unavailable" : "Media duration";
+    [JsonIgnore]
     public JobCostComparison CostComparison => JobCostEstimator.Compare(this, _costSettings);
     [JsonIgnore]
     public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.ScribeUsd);
@@ -212,6 +235,8 @@ public sealed class QueueJob : INotifyPropertyChanged
 
     private void NotifyCostChanged()
     {
+        OnPropertyChanged(nameof(DurationLabel));
+        OnPropertyChanged(nameof(DurationStatusLabel));
         OnPropertyChanged(nameof(CostComparison));
         OnPropertyChanged(nameof(EstimatedScribeCostLabel));
         OnPropertyChanged(nameof(EstimatedTranslateCostLabel));

@@ -78,6 +78,7 @@ public static class JobCostEstimator
 
     private static decimal? ScribeCost(QueueJob job, UserSettings settings)
     {
+        if (job.HasAudio == false) return 0m;
         if (settings.ScribeUsdPerMinute <= 0 || job.DurationSeconds is null) return null;
         return (decimal)Math.Max(0, job.DurationSeconds.Value) / 60m * settings.ScribeUsdPerMinute;
     }
@@ -104,6 +105,7 @@ public static class JobCostEstimator
 
     private static long EstimateSourceCharacters(QueueJob job, UserSettings settings)
     {
+        if (job.HasAudio == false) return 0;
         if (job.TranscriptCharacters > 0) return job.TranscriptCharacters;
         if (job.DurationSeconds is not { } duration) return 0;
         var charactersPerMinute = settings.EstimatedTranslationCharactersPerMinute > 0

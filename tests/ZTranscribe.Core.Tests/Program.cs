@@ -82,6 +82,13 @@ Check("Default Scribe rate estimates cost as soon as duration is known", () =>
     return comparison.Estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
 });
 
+Check("Queue duration labels use hours minutes and seconds", () =>
+{
+    var known = new QueueJob { SourcePath = "sample.mp4", DurationSeconds = 3723 };
+    var unknown = new QueueJob { SourcePath = "unknown.mp4" };
+    return known.DurationLabel == "01:02:03" && unknown.DurationLabel == "--";
+});
+
 Check("Japanese pre-transcription translation estimate uses language-aware density", () =>
 {
     var job = new QueueJob
@@ -217,6 +224,25 @@ Check("FFprobe accepts numeric and string fields", () =>
         && probe.Channels == 2
         && probe.BitRate == 192000
         && probe.Duration == TimeSpan.FromSeconds(123.5);
+});
+
+Check("FFprobe keeps video duration when no audio stream exists", () =>
+{
+    var probe = FfmpegAudioExtractor.ParseProbe("""
+        {
+          "streams": [{ "codec_type": "video", "codec_name": "h264" }],
+          "format": { "duration": "42.5" }
+        }
+        """);
+    return probe.Duration == TimeSpan.FromSeconds(42.5)
+        && probe.AudioCodec == ""
+        && probe.HasVideo;
+});
+
+Check("No-audio media has zero estimated Scribe cost", () =>
+{
+    var job = new QueueJob { SourcePath = "silent.mp4", DurationSeconds = 120, HasAudio = false };
+    return JobCostEstimator.Compare(job, new UserSettings()).Estimate.ScribeUsd == 0m;
 });
 
 await CheckAsync("Canceled child process is terminated", async () =>

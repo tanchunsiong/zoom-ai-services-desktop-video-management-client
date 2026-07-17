@@ -24,17 +24,17 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
     {
         using var document = JsonDocument.Parse(json);
         var streams = document.RootElement.GetProperty("streams").EnumerateArray().ToArray();
-        var audio = streams.FirstOrDefault(x => x.TryGetProperty("codec_type", out var type) && type.GetString() == "audio");
-        if (audio.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("The selected file has no audio stream.");
         var duration = double.Parse(
             GetString(document.RootElement.GetProperty("format"), "duration"),
             CultureInfo.InvariantCulture);
+        var audio = streams.FirstOrDefault(x => x.TryGetProperty("codec_type", out var type) && type.GetString() == "audio");
+        var hasAudio = audio.ValueKind != JsonValueKind.Undefined;
         return new MediaProbe(
             TimeSpan.FromSeconds(duration),
-            GetString(audio, "codec_name"),
-            GetInt(audio, "sample_rate"),
-            GetInt(audio, "channels"),
-            GetLong(audio, "bit_rate"),
+            hasAudio ? GetString(audio, "codec_name") : "",
+            hasAudio ? GetInt(audio, "sample_rate") : 0,
+            hasAudio ? GetInt(audio, "channels") : 0,
+            hasAudio ? GetLong(audio, "bit_rate") : null,
             streams.Any(x => x.TryGetProperty("codec_type", out var type) && type.GetString() == "video"));
     }
 
@@ -46,6 +46,8 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         CancellationToken cancellationToken)
     {
         var probe = await ProbeAsync(job.SourcePath, settings, cancellationToken);
+        if (string.IsNullOrWhiteSpace(probe.AudioCodec))
+            throw new InvalidOperationException("The selected file has no audio stream to transcribe.");
         var profile = ProfileFor(probe.AudioCodec);
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);

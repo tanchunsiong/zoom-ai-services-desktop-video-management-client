@@ -101,6 +101,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ActualQueueTotalCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TotalUsd));
     public string QueueCountLabel => $"{Jobs.Count:N0} jobs in queue";
     public string LastAddedCountLabel => _lastAddedCount is null ? "" : $"Last added: {_lastAddedCount:N0}";
+    public string QueueDurationLabel
+    {
+        get
+        {
+            var knownSeconds = Jobs.Sum(job => job.DurationSeconds ?? 0);
+            var unknown = Jobs.Count(job => job.DurationSeconds is null);
+            var noAudio = Jobs.Count(job => job.HasAudio == false);
+            var duration = TimeSpan.FromSeconds(Math.Max(0, knownSeconds));
+            var details = new List<string>();
+            if (unknown > 0) details.Add($"{unknown:N0} unknown");
+            if (noAudio > 0) details.Add($"{noAudio:N0} without audio");
+            var label = $"Media duration: {(int)duration.TotalHours:N0}h {duration.Minutes:00}m";
+            return details.Count == 0 ? label : $"{label}; {string.Join(", ", details)}";
+        }
+    }
     public string SummaryText
     {
         get => _summaryText;
@@ -294,6 +309,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private void RaiseQueueCostProperties()
     {
         OnPropertyChanged(nameof(EstimatedQueueScribeCostLabel));
+        OnPropertyChanged(nameof(QueueDurationLabel));
         OnPropertyChanged(nameof(EstimatedQueueTranslateCostLabel));
         OnPropertyChanged(nameof(EstimatedQueueSummaryCostLabel));
         OnPropertyChanged(nameof(EstimatedQueueTotalCostLabel));
