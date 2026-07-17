@@ -46,7 +46,7 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         CancellationToken cancellationToken)
     {
         var probe = await ProbeAsync(job.SourcePath, settings, cancellationToken);
-        var profile = ProfileFor(probe.AudioCodec);
+        var profile = job.UseDoubleSpeed ? (Extension: "mp3", MimeType: "audio/mpeg") : ProfileFor(probe.AudioCodec);
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);
         var segment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
@@ -59,22 +59,47 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             var start = TimeSpan.FromSeconds(index * segment.TotalSeconds);
             var duration = probe.Duration - start < segment ? probe.Duration - start : segment;
             var output = Path.Combine(workDirectory, $"audio-{index + 1:000}.{profile.Extension}");
-            await ProcessRunner.RunAsync(settings.FfmpegPath,
-            [
-                "-hide_banner", "-nostdin", "-y",
-                "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-                "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-                "-i", job.SourcePath,
-                "-map", "0:a:0", "-vn", "-c:a", "copy", output
-            ], null, cancellationToken);
+            var arguments = BuildArguments(
+                job.SourcePath, output, start, duration, job.UseDoubleSpeed, probe.Channels);
+            await ProcessRunner.RunAsync(settings.FfmpegPath, arguments, null, cancellationToken);
 
             var outputInfo = new FileInfo(output);
             if (outputInfo.Length > ZoomPartLimitBytes)
                 throw new InvalidOperationException($"Audio part {index + 1} is larger than Zoom's 100 MB request limit. Choose a shorter segment duration.");
-            parts.Add(new PreparedAudioPart(index, output, start, duration, profile.MimeType));
+            parts.Add(new PreparedAudioPart(index, output, start, duration, profile.MimeType,
+                job.UseDoubleSpeed ? 2d : 1d));
             progress?.Report((index + 1d) / count);
         }
         return parts;
+    }
+
+    internal static IReadOnlyList<string> BuildArguments(
+        string input,
+        string output,
+        TimeSpan start,
+        TimeSpan duration,
+        bool useDoubleSpeed,
+        int channels)
+    {
+        var arguments = new List<string>
+        {
+            "-hide_banner", "-nostdin", "-y",
+            "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+            "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+            "-i", input,
+            "-map", "0:a:0", "-vn"
+        };
+        if (useDoubleSpeed)
+        {
+            arguments.AddRange(["-filter:a", "atempo=2.0", "-c:a", "libmp3lame", "-b:a", "320k"]);
+            if (channels > 2) arguments.AddRange(["-ac", "2"]);
+        }
+        else
+        {
+            arguments.AddRange(["-c:a", "copy"]);
+        }
+        arguments.Add(output);
+        return arguments;
     }
 
     private static (string Extension, string MimeType) ProfileFor(string codec) => codec.ToLowerInvariant() switch
@@ -102,4 +127,3 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
     [GeneratedRegex(@"time=(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)")]
     private static partial Regex ProgressTime();
 }
-

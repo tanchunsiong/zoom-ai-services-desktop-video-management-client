@@ -191,6 +191,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void JobDoubleSpeed_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { DataContext: QueueJob job } checkBox) return;
+        var requested = checkBox.IsChecked == true;
+        try { await ViewModel.Queue.UpdateDoubleSpeedAsync(job, requested); }
+        catch (Exception exception)
+        {
+            checkBox.IsChecked = job.UseDoubleSpeed;
+            ShowError(exception);
+        }
+    }
+
     private async void RemoveJobMenuItem_Click(object sender, RoutedEventArgs e)
         => await RemoveSelectedJobsAsync();
 

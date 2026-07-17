@@ -50,7 +50,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         var root = document.RootElement;
         var result = root.TryGetProperty("result", out var value) ? value : root;
         var text = FirstString(result, "text_display", "text_lexical", "text");
-        var cues = ReadSegments(result, text);
+        var cues = ReadSegments(result, text, part.Duration.TotalSeconds / part.TranscriptTimeScale);
         return new TranscriptDocument(language, cues, text,
             FirstString(root, "request_id"), FirstString(root, "model"));
     }
@@ -285,12 +285,12 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         throw new ZoomApiException(service, (int)response.StatusCode, safeBody);
     }
 
-    private static IReadOnlyList<TranscriptCue> ReadSegments(JsonElement result, string fallbackText)
+    private static IReadOnlyList<TranscriptCue> ReadSegments(JsonElement result, string fallbackText, double fallbackDurationSeconds)
     {
         if (!result.TryGetProperty("segments", out var segments) || segments.ValueKind != JsonValueKind.Array)
             return string.IsNullOrWhiteSpace(fallbackText)
                 ? []
-                : [new TranscriptCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(2), fallbackText)];
+                : [new TranscriptCue(1, TimeSpan.Zero, TimeSpan.FromSeconds(Math.Max(0.001, fallbackDurationSeconds)), fallbackText)];
 
         var cues = new List<TranscriptCue>();
         foreach (var segment in segments.EnumerateArray())

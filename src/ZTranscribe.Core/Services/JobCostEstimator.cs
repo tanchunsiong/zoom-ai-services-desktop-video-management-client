@@ -79,7 +79,8 @@ public static class JobCostEstimator
     private static decimal? ScribeCost(QueueJob job, UserSettings settings)
     {
         if (settings.ScribeUsdPerMinute <= 0 || job.DurationSeconds is null) return null;
-        return (decimal)Math.Max(0, job.DurationSeconds.Value) / 60m * settings.ScribeUsdPerMinute;
+        var billableDuration = Math.Max(0, job.DurationSeconds.Value) / (job.UseDoubleSpeed ? 2d : 1d);
+        return (decimal)billableDuration / 60m * settings.ScribeUsdPerMinute;
     }
 
     private static decimal? CharacterCost(long characters, decimal rate)

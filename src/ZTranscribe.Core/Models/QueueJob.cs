@@ -34,6 +34,7 @@ public sealed class QueueJob : INotifyPropertyChanged
     private bool _summarize;
     private long _summaryInputCharacters;
     private long _summaryOutputCharacters;
+    private bool _useDoubleSpeed;
     private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -55,6 +56,17 @@ public sealed class QueueJob : INotifyPropertyChanged
             if (Set(ref _translationLanguage, value ?? "")) NotifyCostChanged();
         }
     }
+    public bool UseDoubleSpeed
+    {
+        get => _useDoubleSpeed;
+        set
+        {
+            if (!Set(ref _useDoubleSpeed, value)) return;
+            OnPropertyChanged(nameof(ProcessingMode));
+            NotifyCostChanged();
+        }
+    }
+    public string ProcessingMode => UseDoubleSpeed ? "2× atempo" : "Original";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
     public double? DurationSeconds
@@ -227,4 +239,3 @@ public sealed class QueueJob : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
-

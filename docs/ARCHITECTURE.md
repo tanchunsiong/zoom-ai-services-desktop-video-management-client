@@ -7,7 +7,7 @@ WPF shell
   └─ JobQueueService
        ├─ JSON queue/settings stores
        ├─ ffprobe metadata
-       ├─ FFmpeg audio stream-copy parts
+       ├─ FFmpeg audio preparation parts
        ├─ Zoom Scribe (bounded parallel calls)
        ├─ timeline merge + WebVTT
        └─ Zoom Translator (optional, cue markers preserved)
@@ -19,10 +19,10 @@ WPF shell
 
 1. Probe source with ffprobe and reject files without an audio stream.
 2. Map the source codec to a Zoom-supported container.
-3. Extract time-bounded audio-only parts using `-map 0:a:0 -vn -c:a copy`.
+3. Extract time-bounded audio-only parts. Normal jobs use `-map 0:a:0 -vn -c:a copy`; optional accelerated jobs use `atempo=2.0` and `libmp3lame` at 320 kbps.
 4. Reject any part above Zoom Scribe's request size limit.
 5. Send up to the configured number of parts concurrently.
-6. Offset each returned segment by its part start, sort, and renumber.
+6. For accelerated jobs, multiply Scribe segment times by two. Then offset every segment by its original-source part start, sort, and renumber.
 7. Write original WebVTT and transcript JSON.
 8. If requested, translate cue batches while retaining marker-to-timestamp mapping. Bridge non-English pairs through English.
 9. Write translated WebVTT.
@@ -42,4 +42,3 @@ WPF shell
 - Temporary audio: `%LOCALAPPDATA%\Z Transcribe\work\<job-id>`
 - Credentials: Windows Credential Manager target `ZTranscribe.ZoomBuildCredentials`
 - Outputs: configurable, or `Z Transcribe Outputs\<source-name>` beside source
-

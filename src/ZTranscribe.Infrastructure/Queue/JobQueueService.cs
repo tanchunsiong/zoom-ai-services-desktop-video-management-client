@@ -128,6 +128,15 @@ public sealed class JobQueueService(
         await SaveAsync();
     }
 
+    public async Task UpdateDoubleSpeedAsync(QueueJob job, bool useDoubleSpeed)
+    {
+        if (!job.CanConfigureSourceLanguage)
+            throw new InvalidOperationException("Audio processing can only be changed before transcription starts.");
+        if (job.UseDoubleSpeed == useDoubleSpeed) return;
+        job.UseDoubleSpeed = useDoubleSpeed;
+        await SaveAsync();
+    }
+
     public async Task TranslateExistingAsync(QueueJob job)
     {
         if (IsRunning) throw new InvalidOperationException("Wait for the active queue operation to finish.");
@@ -364,7 +373,9 @@ public sealed class JobQueueService(
             job.SummaryInputCharacters = 0;
             job.SummaryOutputCharacters = 0;
             job.SummaryPath = null;
-            job.Report(JobState.Preparing, 4, "Inspecting media and copying the audio stream");
+            job.Report(JobState.Preparing, 4, job.UseDoubleSpeed
+                ? "Preparing audio with FFmpeg atempo"
+                : "Inspecting media and copying the audio stream");
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
                 job.Progress = 4 + (int)Math.Round(value * 16));
@@ -391,7 +402,8 @@ public sealed class JobQueueService(
             }
 
             var originalCues = documents.SelectMany((document, index) =>
-                    document.Cues.Select(cue => cue.OffsetBy(parts[index].TimelineStart)))
+                    document.Cues.Select(cue => cue.MapToTimeline(
+                        parts[index].TimelineStart, parts[index].TranscriptTimeScale)))
                 .OrderBy(x => x.Start)
                 .Select((cue, index) => cue with { Index = index + 1 })
                 .ToArray();
@@ -490,4 +502,3 @@ public sealed class JobQueueService(
 
     private Task SaveAsync() => queueStore.SaveAsync(Jobs);
 }
-
