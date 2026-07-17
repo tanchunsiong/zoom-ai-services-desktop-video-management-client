@@ -8,7 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="64"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="34"/>
+            <RowDefinition Height="40"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
@@ -118,6 +118,17 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Est. cost" Width="155">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="6,4" ToolTip="Translation uses Zoom billing units when available and estimated units before processing.">
+                                            <TextBlock Text="{Binding EstimatedScribeCostLabel, StringFormat=Scribe  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding EstimatedTranslateCostLabel, StringFormat=Translate  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding EstimatedTotalCostLabel, StringFormat=Total  {0}}" FontWeight="SemiBold" Margin="0,2,0,0"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -240,7 +251,7 @@
             <TabItem Header="⚙  Settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="32" MaxWidth="820" HorizontalAlignment="Left">
-                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <StackPanel>
                             <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold"/>
                             <TextBlock Text="Credentials stay in Windows Credential Manager and are never written to logs or queue files." Foreground="{StaticResource TextMuted}" Margin="0,6,0,0"/>
@@ -277,14 +288,52 @@
                                 </Grid>
                             </StackPanel>
                         </Border>
-                        <Button Grid.Row="3" Content="Save settings" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,18,0,30" Click="SaveSettings_Click"/>
+                        <Border Grid.Row="3" Margin="0,16,0,0" Padding="22" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Text="Cost estimate rates (USD)" FontSize="18" FontWeight="SemiBold"/>
+                                <TextBlock Text="Defaults use Zoom Build Platform Fast API rates. Override them if your account rates differ; zero is shown as unavailable, not free." Foreground="{StaticResource TextMuted}" Margin="0,6,0,0"/>
+                                <Grid Margin="0,18,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Scribe Fast USD / audio minute" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                                        <TextBox Text="{Binding Settings.ScribeUsdPerMinute, UpdateSourceTrigger=LostFocus}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Translator USD / 1M characters" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                                        <TextBox Text="{Binding Settings.TranslatorUsdPerMillionCharacters, UpdateSourceTrigger=LostFocus}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="4">
+                                        <TextBlock Text="Estimated characters / audio minute" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6" TextWrapping="Wrap"/>
+                                        <TextBox Text="{Binding Settings.EstimatedTranslationCharactersPerMinute, UpdateSourceTrigger=LostFocus}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Button Grid.Row="4" Content="Save settings" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,18,0,30" Click="SaveSettings_Click"/>
                     </Grid>
                 </ScrollViewer>
             </TabItem>
         </TabControl>
 
         <Border Grid.Row="2" Background="#0B1220" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
-            <TextBlock Text="{Binding Notice}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="22,0"/>
+            <Grid Margin="22,0">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Notice}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,18,0"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                            ToolTip="Estimated USD using the rates in Settings. Translator uses input plus output characters.">
+                    <TextBlock Text="All jobs" Foreground="{StaticResource TextMuted}" Margin="0,0,12,0"/>
+                    <TextBlock Text="{Binding QueueScribeCostLabel, StringFormat=Scribe  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                    <TextBlock Text="{Binding QueueTranslateCostLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                    <TextBlock Text="{Binding QueueTotalCostLabel, StringFormat=Total  {0}}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

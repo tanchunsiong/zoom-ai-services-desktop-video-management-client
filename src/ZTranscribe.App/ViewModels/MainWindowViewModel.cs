@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -33,6 +34,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _settingsStore = settingsStore;
         Player = player;
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
+        Jobs.CollectionChanged += Jobs_CollectionChanged;
         Queue.StateChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(IsQueueRunning));
@@ -80,6 +82,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public double PlaybackDurationSeconds => Math.Max(1, _playbackDurationSeconds);
     public string PlaybackPositionLabel => FormatPlaybackTime(_playbackPositionSeconds);
     public string PlaybackDurationLabel => FormatPlaybackTime(_playbackDurationSeconds);
+    public string QueueScribeCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostEstimate.ScribeUsd));
+    public string QueueTranslateCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostEstimate.TranslateUsd));
+    public string QueueTotalCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostEstimate.TotalUsd));
 
     public QueueJob? SelectedJob
     {
@@ -106,6 +111,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ApiKey = credentials?.ApiKey ?? "";
         HasCredentials = credentials is { IsComplete: true };
         await Queue.InitializeAsync();
+        foreach (var job in Jobs) job.ConfigureCostEstimate(Settings);
+        RaiseQueueCostProperties();
         Notice = HasCredentials ? $"{Jobs.Count} job{(Jobs.Count == 1 ? "" : "s")} in the library" :
             "Add Zoom Build credentials in Settings before starting the queue";
         OnPropertyChanged(nameof(Settings));
@@ -116,6 +123,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public async Task SaveSettingsAsync(string apiKey, string apiSecret)
     {
+        if (Settings.ScribeUsdPerMinute < 0 || Settings.TranslatorUsdPerMillionCharacters < 0)
+            throw new InvalidOperationException("Cost estimate rates cannot be negative.");
+        if (Settings.EstimatedTranslationCharactersPerMinute is < 100 or > 10_000)
+            throw new InvalidOperationException("Estimated translation characters per minute must be between 100 and 10,000.");
         if (!string.IsNullOrWhiteSpace(apiSecret))
         {
             if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("API key is required when saving a new secret.");
@@ -128,6 +139,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Enter the API secret when changing the API key.");
         }
         await _settingsStore.SaveAsync(Settings);
+        foreach (var job in Jobs) job.ConfigureCostEstimate(Settings);
+        RaiseQueueCostProperties();
         Notice = "Settings saved securely";
         OnPropertyChanged(nameof(ApiKey));
     }
@@ -177,6 +190,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return time.TotalHours >= 1
             ? $"{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}"
             : $"{time.Minutes:00}:{time.Seconds:00}";
+    }
+
+    private static string FormatAggregateCost(IEnumerable<decimal?> costs)
+    {
+        var values = costs.ToArray();
+        if (values.Length == 0) return JobCostEstimator.FormatUsd(0m);
+        return values.Any(value => value is null)
+            ? "--"
+            : JobCostEstimator.FormatUsd(values.Sum(value => value!.Value));
+    }
+
+    private void Jobs_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+            foreach (QueueJob job in e.OldItems) job.PropertyChanged -= Job_PropertyChanged;
+        if (e.NewItems is not null)
+            foreach (QueueJob job in e.NewItems)
+            {
+                job.ConfigureCostEstimate(Settings);
+                job.PropertyChanged += Job_PropertyChanged;
+            }
+        RaiseQueueCostProperties();
+    }
+
+    private void Job_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(QueueJob.CostEstimate) or
+            nameof(QueueJob.EstimatedScribeCostLabel) or
+            nameof(QueueJob.EstimatedTranslateCostLabel) or
+            nameof(QueueJob.EstimatedTotalCostLabel))
+            RaiseQueueCostProperties();
+    }
+
+    private void RaiseQueueCostProperties()
+    {
+        OnPropertyChanged(nameof(QueueScribeCostLabel));
+        OnPropertyChanged(nameof(QueueTranslateCostLabel));
+        OnPropertyChanged(nameof(QueueTotalCostLabel));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

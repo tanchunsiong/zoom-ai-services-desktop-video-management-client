@@ -30,15 +30,39 @@ public sealed class JobQueueService(
     public async Task AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
     {
         var existing = Jobs.Select(x => Path.GetFullPath(x.SourcePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var added = new List<QueueJob>();
         foreach (var file in files.Where(File.Exists))
         {
             var full = Path.GetFullPath(file);
-            if (existing.Add(full)) Jobs.Add(new QueueJob
+            if (!existing.Add(full)) continue;
+            var job = new QueueJob
             {
                 SourcePath = full,
                 SourceLanguage = sourceLanguage,
                 TranslationLanguage = translationLanguage ?? ""
-            });
+            };
+            Jobs.Add(job);
+            added.Add(job);
+        }
+
+        if (added.Count > 0)
+        {
+            var settings = await settingsStore.LoadAsync();
+            using var gate = new SemaphoreSlim(4);
+            await Task.WhenAll(added.Select(async job =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    var probe = await audioExtractor.ProbeAsync(job.SourcePath, settings, CancellationToken.None);
+                    job.DurationSeconds = probe.Duration.TotalSeconds;
+                }
+                catch
+                {
+                    // Processing reports a full FFprobe error later; adding a file should remain non-blocking.
+                }
+                finally { gate.Release(); }
+            }));
         }
         await SaveAsync();
     }
@@ -71,7 +95,11 @@ public sealed class JobQueueService(
             throw new InvalidOperationException("The translation target must differ from the spoken language.");
 
         if (!string.Equals(job.TranslationLanguage, translationLanguage, StringComparison.Ordinal))
+        {
             job.TranslatedVttPath = null;
+            job.TranslationInputCharacters = 0;
+            job.TranslationOutputCharacters = 0;
+        }
         job.TranslationLanguage = translationLanguage;
         if (job.State == JobState.Ready)
             job.StatusMessage = string.IsNullOrWhiteSpace(translationLanguage)
@@ -103,6 +131,9 @@ public sealed class JobQueueService(
             job.Error = null;
             var cancellationToken = _currentCancellation.Token;
             var cues = WebVtt.Parse(await File.ReadAllTextAsync(job.OriginalVttPath, cancellationToken));
+            job.TranscriptCharacters = cues.Sum(cue => (long)cue.Text.Length);
+            job.TranslationInputCharacters = 0;
+            job.TranslationOutputCharacters = 0;
             var translated = (IReadOnlyList<TranscriptCue>)cues;
             var route = TranslationRoute.Build(job.SourceLanguage, job.TranslationLanguage);
             for (var step = 0; step < route.Count; step++)
@@ -112,8 +143,12 @@ public sealed class JobQueueService(
                     route.Count == 1 ? $"Translating to {LanguageCatalog.NameFor(target)}" :
                     $"Translation step {step + 1} of {route.Count}: {LanguageCatalog.NameFor(source)} → {LanguageCatalog.NameFor(target)}");
                 await SaveAsync();
-                translated = await zoom.TranslateCuesAsync(
+                var result = await zoom.TranslateCuesAsync(
                     translated, source, target, credentials, cancellationToken);
+                translated = result.Cues;
+                job.TranslationInputCharacters += result.InputCharacters;
+                job.TranslationOutputCharacters += result.OutputCharacters;
+                await SaveAsync();
             }
 
             var output = Path.GetDirectoryName(job.OriginalVttPath)!;
@@ -247,6 +282,9 @@ public sealed class JobQueueService(
         var work = Path.Combine(paths.WorkRoot, job.Id.ToString("N"));
         try
         {
+            job.TranscriptCharacters = 0;
+            job.TranslationInputCharacters = 0;
+            job.TranslationOutputCharacters = 0;
             job.Report(JobState.Preparing, 4, "Inspecting media and copying the audio stream");
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
@@ -280,6 +318,7 @@ public sealed class JobQueueService(
                 .ToArray();
             var original = new TranscriptDocument(job.SourceLanguage, originalCues,
                 string.Join("\n", originalCues.Select(x => x.Text)));
+            job.TranscriptCharacters = original.Text.Length;
             var output = OutputDirectory(job, settings);
             Directory.CreateDirectory(output);
             job.OriginalVttPath = Path.Combine(output, "original.vtt");
@@ -298,7 +337,11 @@ public sealed class JobQueueService(
                     job.Report(JobState.Translating, 78 + step * 8,
                         route.Count == 1 ? $"Translating to {LanguageCatalog.NameFor(target)}" :
                         $"Translation step {step + 1} of {route.Count}: {LanguageCatalog.NameFor(source)} → {LanguageCatalog.NameFor(target)}");
-                    translated = await zoom.TranslateCuesAsync(translated, source, target, credentials, cancellationToken);
+                    var result = await zoom.TranslateCuesAsync(translated, source, target, credentials, cancellationToken);
+                    translated = result.Cues;
+                    job.TranslationInputCharacters += result.InputCharacters;
+                    job.TranslationOutputCharacters += result.OutputCharacters;
+                    await SaveAsync();
                 }
                 job.TranslatedVttPath = Path.Combine(output, $"translated-{job.TranslationLanguage}.vtt");
                 await File.WriteAllTextAsync(job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);

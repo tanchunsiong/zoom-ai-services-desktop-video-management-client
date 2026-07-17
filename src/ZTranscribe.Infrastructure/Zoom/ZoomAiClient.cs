@@ -53,7 +53,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
             FirstString(root, "request_id"), FirstString(root, "model"));
     }
 
-    public async Task<IReadOnlyList<TranscriptCue>> TranslateCuesAsync(
+    public async Task<TranslationResult> TranslateCuesAsync(
         IReadOnlyList<TranscriptCue> cues,
         string sourceLanguage,
         string targetLanguage,
@@ -61,19 +61,31 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         CancellationToken cancellationToken)
     {
         var translated = new Dictionary<int, string>();
+        long inputCharacters = 0;
+        long outputCharacters = 0;
         foreach (var batch in CueBatches(cues, 3600))
         {
             var body = string.Join("\n", batch.Select(x => $"[[[ZT_CUE_{x.Index:000000}]]] {Flatten(x.Text)}"));
-            var translatedText = await TranslateTextAsync(body, sourceLanguage, targetLanguage, credentials, cancellationToken);
-            foreach (Match match in CuePattern().Matches(translatedText))
+            var translation = await TranslateTextAsync(body, sourceLanguage, targetLanguage, credentials, cancellationToken);
+            inputCharacters += translation.InputCharacters;
+            outputCharacters += translation.OutputCharacters;
+            foreach (Match match in CuePattern().Matches(translation.Text))
                 translated[int.Parse(match.Groups[1].Value)] = match.Groups[2].Value.Trim();
         }
 
         // A marker can occasionally be changed by the model. Retry those cues individually.
         foreach (var cue in cues.Where(x => !translated.ContainsKey(x.Index)))
-            translated[cue.Index] = await TranslateTextAsync(cue.Text, sourceLanguage, targetLanguage, credentials, cancellationToken);
+        {
+            var translation = await TranslateTextAsync(cue.Text, sourceLanguage, targetLanguage, credentials, cancellationToken);
+            inputCharacters += translation.InputCharacters;
+            outputCharacters += translation.OutputCharacters;
+            translated[cue.Index] = translation.Text;
+        }
 
-        return cues.Select(x => x with { Text = translated[x.Index] }).ToArray();
+        return new TranslationResult(
+            cues.Select(x => x with { Text = translated[x.Index] }).ToArray(),
+            inputCharacters,
+            outputCharacters);
     }
 
     public async Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken)
@@ -86,7 +98,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         if (token.Count(x => x == '.') != 2) throw new InvalidOperationException("Could not create a Zoom Build token.");
     }
 
-    private async Task<string> TranslateTextAsync(
+    private async Task<TranslationTextResult> TranslateTextAsync(
         string text,
         string sourceLanguage,
         string targetLanguage,
@@ -107,8 +119,17 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         EnsureSuccess(response, json, "Zoom Translator");
         using var document = JsonDocument.Parse(json);
-        var translations = document.RootElement.GetProperty("result").GetProperty("translations");
-        return translations.GetProperty(targetLanguage).GetString() ?? "";
+        var root = document.RootElement;
+        var translations = root.GetProperty("result").GetProperty("translations");
+        var translatedText = translations.GetProperty(targetLanguage).GetString() ?? "";
+        long inputCharacters = text.Length;
+        long outputCharacters = translatedText.Length;
+        if (root.TryGetProperty("usage", out var usage))
+        {
+            inputCharacters = ReadInt64(usage, "input_units", inputCharacters);
+            outputCharacters = ReadInt64(usage, "output_units", outputCharacters);
+        }
+        return new TranslationTextResult(translatedText, inputCharacters, outputCharacters);
     }
 
     private async Task<HttpResponseMessage> SendWithRetryAsync(
@@ -181,6 +202,13 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         return 0;
     }
 
+    private static long ReadInt64(JsonElement element, string name, long fallback)
+    {
+        if (!element.TryGetProperty(name, out var value)) return fallback;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number;
+        return long.TryParse(value.GetString(), out number) ? number : fallback;
+    }
+
     private static string FirstString(JsonElement element, params string[] names)
     {
         foreach (var name in names)
@@ -212,6 +240,8 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
 
     [GeneratedRegex(@"\[\[\[\s*ZT_CUE_(\d{6})\s*\]\]\]\s*([\s\S]*?)(?=\s*\[\[\[\s*ZT_CUE_\d{6}\s*\]\]\]|$)")]
     private static partial Regex CuePattern();
+
+    private sealed record TranslationTextResult(string Text, long InputCharacters, long OutputCharacters);
 }
 
 public sealed class ZoomApiException(string service, int statusCode, string responseBody)

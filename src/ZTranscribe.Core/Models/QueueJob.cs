@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using ZTranscribe.Core.Services;
 
 namespace ZTranscribe.Core.Models;
 
@@ -25,6 +26,11 @@ public sealed class QueueJob : INotifyPropertyChanged
     private string? _error;
     private string _sourceLanguage = "en-US";
     private string _translationLanguage = "";
+    private double? _durationSeconds;
+    private long _transcriptCharacters;
+    private long _translationInputCharacters;
+    private long _translationOutputCharacters;
+    private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string SourcePath { get; init; }
@@ -32,16 +38,53 @@ public sealed class QueueJob : INotifyPropertyChanged
     public string SourceLanguage
     {
         get => _sourceLanguage;
-        set => Set(ref _sourceLanguage, value);
+        set
+        {
+            if (Set(ref _sourceLanguage, value)) NotifyCostChanged();
+        }
     }
     public string TranslationLanguage
     {
         get => _translationLanguage;
-        set => Set(ref _translationLanguage, value ?? "");
+        set
+        {
+            if (Set(ref _translationLanguage, value ?? "")) NotifyCostChanged();
+        }
     }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
-    public double? DurationSeconds { get; set; }
+    public double? DurationSeconds
+    {
+        get => _durationSeconds;
+        set
+        {
+            if (Set(ref _durationSeconds, value)) NotifyCostChanged();
+        }
+    }
+    public long TranscriptCharacters
+    {
+        get => _transcriptCharacters;
+        set
+        {
+            if (Set(ref _transcriptCharacters, Math.Max(0, value))) NotifyCostChanged();
+        }
+    }
+    public long TranslationInputCharacters
+    {
+        get => _translationInputCharacters;
+        set
+        {
+            if (Set(ref _translationInputCharacters, Math.Max(0, value))) NotifyCostChanged();
+        }
+    }
+    public long TranslationOutputCharacters
+    {
+        get => _translationOutputCharacters;
+        set
+        {
+            if (Set(ref _translationOutputCharacters, Math.Max(0, value))) NotifyCostChanged();
+        }
+    }
     public string? OriginalVttPath { get; set; }
     public string? TranslatedVttPath { get; set; }
     public string? TranscriptJsonPath { get; set; }
@@ -85,6 +128,24 @@ public sealed class QueueJob : INotifyPropertyChanged
     public bool CanRetry => State == JobState.Failed;
     [JsonIgnore]
     public bool CanRemove => !CanEnd;
+    [JsonIgnore]
+    public JobCostEstimate CostEstimate => JobCostEstimator.Estimate(this, _costSettings);
+    [JsonIgnore]
+    public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostEstimate.ScribeUsd);
+    [JsonIgnore]
+    public string EstimatedTranslateCostLabel => JobCostEstimator.FormatUsd(CostEstimate.TranslateUsd);
+    [JsonIgnore]
+    public string EstimatedTotalCostLabel => JobCostEstimator.FormatUsd(CostEstimate.TotalUsd);
+    [JsonIgnore]
+    public string TranslationCostBasisLabel => CostEstimate.TranslationBillableCharacters == 0
+        ? "No translation"
+        : CostEstimate.UsesActualTranslationUsage ? "Zoom usage" : "Estimated usage";
+
+    public void ConfigureCostEstimate(UserSettings settings)
+    {
+        _costSettings = settings;
+        NotifyCostChanged();
+    }
 
     public void Report(JobState state, int percent, string message)
     {
@@ -103,11 +164,21 @@ public sealed class QueueJob : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         OnPropertyChanged(propertyName);
+        return true;
+    }
+
+    private void NotifyCostChanged()
+    {
+        OnPropertyChanged(nameof(CostEstimate));
+        OnPropertyChanged(nameof(EstimatedScribeCostLabel));
+        OnPropertyChanged(nameof(EstimatedTranslateCostLabel));
+        OnPropertyChanged(nameof(EstimatedTotalCostLabel));
+        OnPropertyChanged(nameof(TranslationCostBasisLabel));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

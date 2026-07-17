@@ -48,6 +48,88 @@ Check("Queue actions follow job state", () =>
     return queued && active && failed;
 });
 
+Check("Cost estimate itemizes Scribe and direct translation", () =>
+{
+    var settings = new UserSettings
+    {
+        ScribeUsdPerMinute = 0.01m,
+        TranslatorUsdPerMillionCharacters = 20m
+    };
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "en-US",
+        TranslationLanguage = "fr-FR",
+        DurationSeconds = 120,
+        TranscriptCharacters = 1000
+    };
+    var estimate = JobCostEstimator.Estimate(job, settings);
+    return estimate.ScribeUsd == 0.02m
+        && estimate.TranslateUsd == 0.04m
+        && estimate.TotalUsd == 0.06m
+        && estimate.TranslationBillableCharacters == 2000
+        && !estimate.UsesActualTranslationUsage;
+});
+
+Check("Default Scribe rate estimates cost as soon as duration is known", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        DurationSeconds = 120
+    };
+    var estimate = JobCostEstimator.Estimate(job, new UserSettings());
+    return estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
+});
+
+Check("Bridged translation estimates both API steps", () =>
+{
+    var settings = new UserSettings { TranslatorUsdPerMillionCharacters = 20m };
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "ja-JP",
+        TranslationLanguage = "zh-CN",
+        TranscriptCharacters = 1000
+    };
+    var estimate = JobCostEstimator.Estimate(job, settings);
+    return estimate.TranslateUsd == 0.08m && estimate.TranslationBillableCharacters == 4000;
+});
+
+Check("Actual Zoom translation usage replaces the pre-job estimate", () =>
+{
+    var settings = new UserSettings { TranslatorUsdPerMillionCharacters = 10m };
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "en-US",
+        TranslationLanguage = "de-DE",
+        TranscriptCharacters = 1000,
+        TranslationInputCharacters = 1800,
+        TranslationOutputCharacters = 1200
+    };
+    var estimate = JobCostEstimator.Estimate(job, settings);
+    return estimate.TranslateUsd == 0.03m
+        && estimate.TranslationBillableCharacters == 3000
+        && estimate.UsesActualTranslationUsage;
+});
+
+Check("Missing rates remain unavailable instead of appearing free", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        TranslationLanguage = "fr-FR",
+        DurationSeconds = 60
+    };
+    var estimate = JobCostEstimator.Estimate(job, new UserSettings
+    {
+        ScribeUsdPerMinute = 0,
+        TranslatorUsdPerMillionCharacters = 0
+    });
+    return estimate.ScribeUsd is null && estimate.TranslateUsd is null && estimate.TotalUsd is null;
+});
+
 Check("FFprobe accepts numeric and string fields", () =>
 {
     var probe = FfmpegAudioExtractor.ParseProbe("""
@@ -82,8 +164,21 @@ await CheckAsync("Canceled child process is terminated", async () =>
     try
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (!File.Exists(markerPath)) await Task.Delay(25, timeout.Token);
-        var processId = int.Parse(await File.ReadAllTextAsync(markerPath, timeout.Token));
+        int? processId = null;
+        while (processId is null)
+        {
+            try
+            {
+                if (File.Exists(markerPath) &&
+                    int.TryParse(await File.ReadAllTextAsync(markerPath, timeout.Token), out var parsedProcessId))
+                    processId = parsedProcessId;
+            }
+            catch (IOException)
+            {
+                // The child may still hold the marker briefly after creating it.
+            }
+            if (processId is null) await Task.Delay(25, timeout.Token);
+        }
 
         cancellation.Cancel();
         try
@@ -95,7 +190,7 @@ await CheckAsync("Canceled child process is terminated", async () =>
         {
             try
             {
-                using var process = Process.GetProcessById(processId);
+                using var process = Process.GetProcessById(processId.Value);
                 return process.HasExited;
             }
             catch (ArgumentException)

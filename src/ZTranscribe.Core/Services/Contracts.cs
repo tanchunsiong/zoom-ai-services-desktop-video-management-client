@@ -40,7 +40,7 @@ public interface IZoomAiClient
         ApiCredentials credentials,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<TranscriptCue>> TranslateCuesAsync(
+    Task<TranslationResult> TranslateCuesAsync(
         IReadOnlyList<TranscriptCue> cues,
         string sourceLanguage,
         string targetLanguage,

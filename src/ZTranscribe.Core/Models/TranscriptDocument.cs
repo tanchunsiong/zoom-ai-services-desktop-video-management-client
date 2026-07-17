@@ -16,6 +16,11 @@ public sealed record TranscriptDocument(
     string? RequestId = null,
     string? Model = null);
 
+public sealed record TranslationResult(
+    IReadOnlyList<TranscriptCue> Cues,
+    long InputCharacters,
+    long OutputCharacters);
+
 public sealed record PreparedAudioPart(
     int Index,
     string Path,
@@ -38,10 +43,16 @@ public sealed record ApiCredentials(string ApiKey, string ApiSecret)
 
 public sealed class UserSettings
 {
+    public const decimal DefaultScribeFastUsdPerMinute = 0.0033m;
+    public const decimal DefaultTranslatorUsdPerMillionCharacters = 7.50m;
+
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string FfprobePath { get; set; } = "ffprobe.exe";
     public string? OutputRoot { get; set; }
     public int ScribeConcurrency { get; set; } = 2;
     public int SegmentMinutes { get; set; } = 15;
+    public decimal ScribeUsdPerMinute { get; set; } = DefaultScribeFastUsdPerMinute;
+    public decimal TranslatorUsdPerMillionCharacters { get; set; } = DefaultTranslatorUsdPerMillionCharacters;
+    public int EstimatedTranslationCharactersPerMinute { get; set; } = 1200;
 }
 
