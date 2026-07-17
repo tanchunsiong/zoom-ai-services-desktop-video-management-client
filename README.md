@@ -13,7 +13,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Original and translated `.vtt` files plus transcript JSON.
 - Embedded LibVLCSharp player with WebVTT overlay and a seekable caption timeline.
-- Per-job and all-jobs Scribe/Translator cost estimates. Scribe cost appears as soon as FFprobe reads the media duration, using editable Zoom Fast API defaults; completed translations use Zoom-reported character usage.
+- Per-job and all-jobs Scribe/Translator costs. Queue rows are labeled `Estimate` before processing and `Actual` after completion; Scribe appears as soon as FFprobe reads the duration, while completed translations use measured API character usage.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
 - Windows GitHub Actions build and downloadable `win-x64` workflow artifact.
 

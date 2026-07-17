@@ -122,10 +122,11 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Est. cost" Width="155">
+                            <DataGridTemplateColumn Header="Cost (USD)" Width="155">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <StackPanel Margin="6,4" ToolTip="Translation uses Zoom billing units when available and estimated units before processing.">
+                                        <StackPanel Margin="6,4" ToolTip="Estimate uses audio duration and an editable characters-per-minute assumption. Actual uses completed Scribe duration and measured Translator request/response usage.">
+                                            <TextBlock Text="{Binding CostBasisLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,0,0,2"/>
                                             <TextBlock Text="{Binding EstimatedScribeCostLabel, StringFormat=Scribe  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
                                             <TextBlock Text="{Binding EstimatedTranslateCostLabel, StringFormat=Translate  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
                                             <TextBlock Text="{Binding EstimatedTotalCostLabel, StringFormat=Total  {0}}" FontWeight="SemiBold" Margin="0,2,0,0"/>

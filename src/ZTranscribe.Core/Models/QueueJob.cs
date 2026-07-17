@@ -137,6 +137,11 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public string EstimatedTotalCostLabel => JobCostEstimator.FormatUsd(CostEstimate.TotalUsd);
     [JsonIgnore]
+    public string CostBasisLabel => CompletedAt is not null &&
+        (string.IsNullOrWhiteSpace(TranslationLanguage) || CostEstimate.UsesActualTranslationUsage)
+            ? "Actual"
+            : "Estimate";
+    [JsonIgnore]
     public string TranslationCostBasisLabel => CostEstimate.TranslationBillableCharacters == 0
         ? "No translation"
         : CostEstimate.UsesActualTranslationUsage ? "Zoom usage" : "Estimated usage";
@@ -160,6 +165,7 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanEnd));
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(CanRemove));
+        OnPropertyChanged(nameof(CostBasisLabel));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -178,6 +184,7 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(EstimatedScribeCostLabel));
         OnPropertyChanged(nameof(EstimatedTranslateCostLabel));
         OnPropertyChanged(nameof(EstimatedTotalCostLabel));
+        OnPropertyChanged(nameof(CostBasisLabel));
         OnPropertyChanged(nameof(TranslationCostBasisLabel));
     }
 

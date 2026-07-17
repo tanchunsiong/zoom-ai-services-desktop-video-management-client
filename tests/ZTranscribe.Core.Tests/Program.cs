@@ -114,6 +114,35 @@ Check("Actual Zoom translation usage replaces the pre-job estimate", () =>
         && estimate.UsesActualTranslationUsage;
 });
 
+Check("Completed rows identify measured usage as actual", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "en-US",
+        TranslationLanguage = "de-DE",
+        DurationSeconds = 60,
+        TranslationInputCharacters = 1800,
+        TranslationOutputCharacters = 1200
+    };
+    var beforeCompletion = job.CostBasisLabel == "Estimate";
+    job.CompletedAt = DateTimeOffset.UtcNow;
+    job.Report(JobState.Ready, 100, "Ready");
+    return beforeCompletion && job.CostBasisLabel == "Actual";
+});
+
+Check("Completed transcription remains estimated until requested translation finishes", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        TranslationLanguage = "fr-FR",
+        CompletedAt = DateTimeOffset.UtcNow
+    };
+    job.Report(JobState.Ready, 100, "Transcript ready; translation has not been generated");
+    return job.CostBasisLabel == "Estimate";
+});
+
 Check("Missing rates remain unavailable instead of appearing free", () =>
 {
     var job = new QueueJob
