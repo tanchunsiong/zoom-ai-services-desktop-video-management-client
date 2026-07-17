@@ -4,7 +4,11 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>Assets\z-transcribe.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\z-transcribe.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ZTranscribe.Core\ZTranscribe.Core.csproj" />
     <ProjectReference Include="..\ZTranscribe.Infrastructure\ZTranscribe.Infrastructure.csproj" />

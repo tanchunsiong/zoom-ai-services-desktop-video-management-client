@@ -16,8 +16,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private QueueJob? _selectedJob;
     private string _notice = "Ready";
     private bool _hasCredentials;
-    private LanguageOption _sourceLanguage = LanguageCatalog.Transcription[0];
-    private LanguageOption _translationLanguage;
+    private string _activeCaptionText = "";
+    private bool _hasReviewMedia;
+    private bool _isUpdatingPlaybackPosition;
+    private double _playbackPositionSeconds;
+    private double _playbackDurationSeconds;
 
     public MainWindowViewModel(
         JobQueueService queue,
@@ -30,8 +33,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _settingsStore = settingsStore;
         Player = player;
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
-        _translationLanguage = TranslationLanguages[0];
-        Queue.StateChanged += (_, _) => OnPropertyChanged(nameof(IsQueueRunning));
+        Queue.StateChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsQueueRunning));
+            OnPropertyChanged(nameof(IsQueueIdle));
+            OnPropertyChanged(nameof(PauseResumeLabel));
+        };
     }
 
     public JobQueueService Queue { get; }
@@ -43,18 +50,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public UserSettings Settings { get; private set; } = new();
     public string ApiKey { get; private set; } = "";
     public bool IsQueueRunning => Queue.IsRunning;
-
-    public LanguageOption SourceLanguage
+    public bool IsQueueIdle => !Queue.IsRunning;
+    public string PauseResumeLabel => Queue.IsPaused ? "Resume" : "Pause";
+    public string ActiveCaptionText
     {
-        get => _sourceLanguage;
-        set => Set(ref _sourceLanguage, value);
+        get => _activeCaptionText;
+        private set => Set(ref _activeCaptionText, value);
     }
-
-    public LanguageOption TranslationLanguage
+    public bool HasReviewMedia
     {
-        get => _translationLanguage;
-        set => Set(ref _translationLanguage, value);
+        get => _hasReviewMedia;
+        private set => Set(ref _hasReviewMedia, value);
     }
+    public double PlaybackPositionSeconds
+    {
+        get => _playbackPositionSeconds;
+        set
+        {
+            var maximum = _playbackDurationSeconds > 0 ? _playbackDurationSeconds : double.MaxValue;
+            var position = Math.Clamp(value, 0, maximum);
+            if (Math.Abs(_playbackPositionSeconds - position) < 0.01) return;
+            _playbackPositionSeconds = position;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PlaybackPositionLabel));
+            if (!_isUpdatingPlaybackPosition)
+                Player.Seek(TimeSpan.FromSeconds(position));
+        }
+    }
+    public double PlaybackDurationSeconds => Math.Max(1, _playbackDurationSeconds);
+    public string PlaybackPositionLabel => FormatPlaybackTime(_playbackPositionSeconds);
+    public string PlaybackDurationLabel => FormatPlaybackTime(_playbackDurationSeconds);
 
     public QueueJob? SelectedJob
     {
@@ -87,9 +112,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiKey));
     }
 
-    public Task AddFilesAsync(IEnumerable<string> files) => Queue.AddAsync(
-        files, SourceLanguage.Locale,
-        string.IsNullOrWhiteSpace(TranslationLanguage.Locale) ? null : TranslationLanguage.Locale);
+    public Task AddFilesAsync(IEnumerable<string> files) => Queue.AddAsync(files, "en-US", null);
 
     public async Task SaveSettingsAsync(string apiKey, string apiSecret)
     {
@@ -111,13 +134,49 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public async Task OpenForReviewAsync(QueueJob job, bool translated)
     {
-        var subtitle = translated && File.Exists(job.TranslatedVttPath) ? job.TranslatedVttPath : job.OriginalVttPath;
+        var subtitle = translated ? job.TranslatedVttPath : job.OriginalVttPath;
+        if (translated && !File.Exists(subtitle))
+            throw new InvalidOperationException("This job does not have translated captions yet. Choose a translation target in its queue row, then use Translate selected.");
         if (!File.Exists(subtitle)) throw new InvalidOperationException("This job does not have a subtitle file yet.");
         ReviewCues.Clear();
         foreach (var cue in WebVtt.Parse(await File.ReadAllTextAsync(subtitle))) ReviewCues.Add(cue);
+        ActiveCaptionText = "";
+        HasReviewMedia = true;
+        UpdatePlaybackDuration(TimeSpan.Zero);
+        UpdatePlaybackPosition(TimeSpan.Zero);
         SelectedJob = job;
         Player.Open(job, subtitle);
         Notice = $"Reviewing {job.DisplayName}";
+    }
+
+    public void SeekToCue(TranscriptCue cue)
+    {
+        ActiveCaptionText = cue.Text;
+        Player.Seek(cue.Start, playIfPaused: true);
+    }
+
+    public void UpdatePlaybackPosition(TimeSpan position)
+    {
+        _isUpdatingPlaybackPosition = true;
+        PlaybackPositionSeconds = position.TotalSeconds;
+        _isUpdatingPlaybackPosition = false;
+        var cue = ReviewCues.FirstOrDefault(item => item.Start <= position && position < item.End);
+        ActiveCaptionText = cue?.Text ?? "";
+    }
+
+    public void UpdatePlaybackDuration(TimeSpan duration)
+    {
+        _playbackDurationSeconds = Math.Max(0, duration.TotalSeconds);
+        OnPropertyChanged(nameof(PlaybackDurationSeconds));
+        OnPropertyChanged(nameof(PlaybackDurationLabel));
+    }
+
+    private static string FormatPlaybackTime(double totalSeconds)
+    {
+        var time = TimeSpan.FromSeconds(Math.Max(0, totalSeconds));
+        return time.TotalHours >= 1
+            ? $"{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}"
+            : $"{time.Minutes:00}:{time.Seconds:00}";
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

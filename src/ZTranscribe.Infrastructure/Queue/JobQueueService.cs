@@ -15,8 +15,11 @@ public sealed class JobQueueService(
     AppPaths paths)
 {
     private CancellationTokenSource? _runCancellation;
+    private CancellationTokenSource? _currentCancellation;
+    private TaskCompletionSource<bool>? _resumeSignal;
     public ObservableCollection<QueueJob> Jobs { get; } = [];
     public bool IsRunning { get; private set; }
+    public bool IsPaused { get; private set; }
     public event EventHandler? StateChanged;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -34,7 +37,7 @@ public sealed class JobQueueService(
             {
                 SourcePath = full,
                 SourceLanguage = sourceLanguage,
-                TranslationLanguage = translationLanguage
+                TranslationLanguage = translationLanguage ?? ""
             });
         }
         await SaveAsync();
@@ -47,6 +50,100 @@ public sealed class JobQueueService(
         await SaveAsync();
     }
 
+    public async Task UpdateSourceLanguageAsync(QueueJob job, string sourceLanguage)
+    {
+        if (!job.CanConfigureSourceLanguage)
+            throw new InvalidOperationException("The spoken language can only be changed before transcription starts.");
+        job.SourceLanguage = sourceLanguage;
+        if (job.TranslationLanguage == sourceLanguage)
+        {
+            job.TranslationLanguage = "";
+            job.TranslatedVttPath = null;
+        }
+        await SaveAsync();
+    }
+
+    public async Task UpdateTranslationLanguageAsync(QueueJob job, string translationLanguage)
+    {
+        if (!job.CanConfigureLanguages)
+            throw new InvalidOperationException("The translation target cannot be changed while this job is processing.");
+        if (!string.IsNullOrWhiteSpace(translationLanguage) && translationLanguage == job.SourceLanguage)
+            throw new InvalidOperationException("The translation target must differ from the spoken language.");
+
+        if (!string.Equals(job.TranslationLanguage, translationLanguage, StringComparison.Ordinal))
+            job.TranslatedVttPath = null;
+        job.TranslationLanguage = translationLanguage;
+        if (job.State == JobState.Ready)
+            job.StatusMessage = string.IsNullOrWhiteSpace(translationLanguage)
+                ? "Transcript is ready to review"
+                : "Transcript ready; translation has not been generated";
+        await SaveAsync();
+    }
+
+    public async Task TranslateExistingAsync(QueueJob job)
+    {
+        if (IsRunning) throw new InvalidOperationException("Wait for the active queue operation to finish.");
+        if (!job.CanReview || !File.Exists(job.OriginalVttPath))
+            throw new InvalidOperationException("Complete transcription before translating this job.");
+        if (string.IsNullOrWhiteSpace(job.TranslationLanguage))
+            throw new InvalidOperationException("Choose a translation target in this job's queue row first.");
+        if (job.TranslationLanguage == job.SourceLanguage)
+            throw new InvalidOperationException("The translation target must differ from the spoken language.");
+
+        var credentials = await credentialVault.LoadAsync();
+        if (credentials is not { IsComplete: true })
+            throw new InvalidOperationException("Add your Zoom API key and API secret in Settings first.");
+
+        _runCancellation = new CancellationTokenSource();
+        _currentCancellation = CancellationTokenSource.CreateLinkedTokenSource(_runCancellation.Token);
+        IsRunning = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            job.Error = null;
+            var cancellationToken = _currentCancellation.Token;
+            var cues = WebVtt.Parse(await File.ReadAllTextAsync(job.OriginalVttPath, cancellationToken));
+            var translated = (IReadOnlyList<TranscriptCue>)cues;
+            var route = TranslationRoute.Build(job.SourceLanguage, job.TranslationLanguage);
+            for (var step = 0; step < route.Count; step++)
+            {
+                var (source, target) = route[step];
+                job.Report(JobState.Translating, 78 + step * 8,
+                    route.Count == 1 ? $"Translating to {LanguageCatalog.NameFor(target)}" :
+                    $"Translation step {step + 1} of {route.Count}: {LanguageCatalog.NameFor(source)} → {LanguageCatalog.NameFor(target)}");
+                await SaveAsync();
+                translated = await zoom.TranslateCuesAsync(
+                    translated, source, target, credentials, cancellationToken);
+            }
+
+            var output = Path.GetDirectoryName(job.OriginalVttPath)!;
+            job.TranslatedVttPath = Path.Combine(output, $"translated-{job.TranslationLanguage}.vtt");
+            await File.WriteAllTextAsync(
+                job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
+            job.Report(JobState.Ready, 100, "Translated captions are ready to review");
+        }
+        catch (OperationCanceledException)
+        {
+            job.Report(JobState.Ready, 100, "Transcript ready; translation canceled");
+        }
+        catch (Exception exception)
+        {
+            job.Error = exception.Message;
+            job.Report(JobState.Ready, 100, "Transcript ready; translation failed");
+            throw;
+        }
+        finally
+        {
+            await SaveAsync();
+            IsRunning = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            _currentCancellation.Dispose();
+            _currentCancellation = null;
+            _runCancellation.Dispose();
+            _runCancellation = null;
+        }
+    }
+
     public async Task RemoveAsync(QueueJob job)
     {
         if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating)
@@ -55,9 +152,19 @@ public sealed class JobQueueService(
         await SaveAsync();
     }
 
-    public async Task StartAsync()
+    public Task StartAsync() => RunJobsAsync(Jobs.Where(x => x.State == JobState.Queued).ToArray());
+
+    public Task StartJobAsync(QueueJob job)
     {
-        if (IsRunning) return;
+        if (!job.CanStart) throw new InvalidOperationException("This job is not ready to start.");
+        return RunJobsAsync([job]);
+    }
+
+    private async Task RunJobsAsync(IReadOnlyList<QueueJob> jobs)
+    {
+        if (IsRunning) throw new InvalidOperationException("Another queue operation is already running.");
+        if (jobs.Count == 0) return;
+
         var credentials = await credentialVault.LoadAsync();
         if (credentials is not { IsComplete: true }) throw new InvalidOperationException("Add your Zoom API key and API secret in Settings first.");
         var settings = await settingsStore.LoadAsync();
@@ -66,14 +173,31 @@ public sealed class JobQueueService(
         StateChanged?.Invoke(this, EventArgs.Empty);
         try
         {
-            foreach (var job in Jobs.Where(x => x.State == JobState.Queued).ToArray())
+            foreach (var job in jobs)
             {
                 if (_runCancellation.IsCancellationRequested) break;
-                await ProcessAsync(job, credentials, settings, _runCancellation.Token);
+                await WaitIfPausedAsync(_runCancellation.Token);
+                if (_runCancellation.IsCancellationRequested) break;
+
+                _currentCancellation = CancellationTokenSource.CreateLinkedTokenSource(_runCancellation.Token);
+                try
+                {
+                    await ProcessAsync(job, credentials, settings, _currentCancellation.Token);
+                }
+                finally
+                {
+                    _currentCancellation.Dispose();
+                    _currentCancellation = null;
+                }
             }
+        }
+        catch (OperationCanceledException) when (_runCancellation.IsCancellationRequested)
+        {
+            // Closing the app or stopping the run releases a paused scheduler.
         }
         finally
         {
+            ResetPause();
             IsRunning = false;
             StateChanged?.Invoke(this, EventArgs.Empty);
             _runCancellation.Dispose();
@@ -81,7 +205,42 @@ public sealed class JobQueueService(
         }
     }
 
-    public void CancelCurrent() => _runCancellation?.Cancel();
+    public void CancelCurrent() => _currentCancellation?.Cancel();
+
+    public void StopAll()
+    {
+        _runCancellation?.Cancel();
+        _currentCancellation?.Cancel();
+        ResetPause();
+    }
+
+    public void Pause()
+    {
+        if (!IsRunning || IsPaused) return;
+        IsPaused = true;
+        _resumeSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Resume()
+    {
+        if (!IsPaused) return;
+        ResetPause();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task WaitIfPausedAsync(CancellationToken cancellationToken)
+    {
+        while (IsPaused && _resumeSignal is { } signal)
+            await signal.Task.WaitAsync(cancellationToken);
+    }
+
+    private void ResetPause()
+    {
+        IsPaused = false;
+        _resumeSignal?.TrySetResult(true);
+        _resumeSignal = null;
+    }
 
     private async Task ProcessAsync(QueueJob job, ApiCredentials credentials, UserSettings settings, CancellationToken cancellationToken)
     {

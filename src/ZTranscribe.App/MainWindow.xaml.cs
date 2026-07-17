@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Win32;
 using ZTranscribe.App.ViewModels;
@@ -19,6 +21,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.Player.PositionChanged += Player_PositionChanged;
+        viewModel.Player.DurationChanged += Player_DurationChanged;
     }
 
     private async void AddFiles_Click(object sender, RoutedEventArgs e)
@@ -52,7 +56,7 @@ public partial class MainWindow : Window
         catch (Exception exception) { ShowError(exception); }
     }
 
-    private async void StartQueue_Click(object sender, RoutedEventArgs e)
+    private async void StartAll_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -63,10 +67,18 @@ public partial class MainWindow : Window
         catch (Exception exception) { ShowError(exception); }
     }
 
-    private void CancelQueue_Click(object sender, RoutedEventArgs e)
+    private void PauseResume_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.Queue.CancelCurrent();
-        ViewModel.Notice = "Canceling the active job";
+        if (ViewModel.Queue.IsPaused)
+        {
+            ViewModel.Queue.Resume();
+            ViewModel.Notice = "Queue resumed";
+        }
+        else
+        {
+            ViewModel.Queue.Pause();
+            ViewModel.Notice = "Queue will pause before the next job";
+        }
     }
 
     private async void JobsGrid_DoubleClick(object sender, MouseButtonEventArgs e) => await ReviewSelectedAsync(false);
@@ -85,18 +97,84 @@ public partial class MainWindow : Window
         catch (Exception exception) { ShowError(exception); }
     }
 
-    private async void Retry_Click(object sender, RoutedEventArgs e)
+    private async void StartCurrent_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedJob is not { } job) return;
-        try { await ViewModel.Queue.RetryAsync(job); }
+        if (sender is not Button { DataContext: QueueJob job }) return;
+        try
+        {
+            ViewModel.Notice = $"Starting {job.DisplayName}";
+            await ViewModel.Queue.StartJobAsync(job);
+            ViewModel.Notice = job.StatusMessage;
+        }
         catch (Exception exception) { ShowError(exception); }
     }
 
-    private async void Remove_Click(object sender, RoutedEventArgs e)
+    private void EndCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.Queue.CancelCurrent();
+        ViewModel.Notice = "Ending the active job";
+    }
+
+    private async void RetryCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: QueueJob job }) return;
+        try
+        {
+            await ViewModel.Queue.RetryAsync(job);
+            ViewModel.Notice = $"Retrying {job.DisplayName}";
+            await ViewModel.Queue.StartJobAsync(job);
+            ViewModel.Notice = job.StatusMessage;
+        }
+        catch (Exception exception) { ShowError(exception); }
+    }
+
+    private async void TranslateSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedJob is not { } job) return;
+        try
+        {
+            ViewModel.Notice = "Translating the existing transcript";
+            await ViewModel.Queue.TranslateExistingAsync(job);
+            ViewModel.Notice = job.StatusMessage;
+        }
+        catch (Exception exception) { ShowError(exception); }
+    }
+
+    private async void JobLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { IsKeyboardFocusWithin: true, DataContext: QueueJob job, SelectedItem: LanguageOption option } comboBox)
+            return;
+
+        try
+        {
+            if (Equals(comboBox.Tag, "source"))
+                await ViewModel.Queue.UpdateSourceLanguageAsync(job, option.Locale);
+            else
+                await ViewModel.Queue.UpdateTranslationLanguageAsync(job, option.Locale);
+        }
+        catch (Exception exception)
+        {
+            comboBox.SelectedValue = Equals(comboBox.Tag, "source")
+                ? job.SourceLanguage
+                : job.TranslationLanguage;
+            ShowError(exception);
+        }
+    }
+
+    private async void RemoveJobMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedJob is not { } job) return;
         try { await ViewModel.Queue.RemoveAsync(job); }
         catch (Exception exception) { ShowError(exception); }
+    }
+
+    private async void ReviewJobMenuItem_Click(object sender, RoutedEventArgs e) =>
+        await ReviewSelectedAsync(false);
+
+    private void JobsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(JobsGrid, e.OriginalSource as DependencyObject) is DataGridRow row)
+            JobsGrid.SelectedItem = row.Item;
     }
 
     private void OpenOutput_Click(object sender, RoutedEventArgs e)
@@ -116,9 +194,32 @@ public partial class MainWindow : Window
         catch (Exception exception) { ShowError(exception); }
     }
 
-    private void CueList_DoubleClick(object sender, MouseButtonEventArgs e)
+    private void CueList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (CueList.SelectedItem is TranscriptCue cue) ViewModel.Player.Seek(cue.Start);
+        if (ItemsControl.ContainerFromElement(CueList, e.OriginalSource as DependencyObject) is not ListBoxItem item ||
+            item.DataContext is not TranscriptCue cue) return;
+
+        CueList.SelectedItem = cue;
+        ViewModel.SeekToCue(cue);
+    }
+
+    private void Player_PositionChanged(TimeSpan position) =>
+        Dispatcher.BeginInvoke(() => ViewModel.UpdatePlaybackPosition(position));
+
+    private void Player_DurationChanged(TimeSpan duration) =>
+        Dispatcher.BeginInvoke(() => ViewModel.UpdatePlaybackDuration(duration));
+
+    private void Play_Click(object sender, RoutedEventArgs e) => ViewModel.Player.Play();
+
+    private void PausePlayback_Click(object sender, RoutedEventArgs e) => ViewModel.Player.Pause();
+
+    private void PlaybackRate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string value } ||
+            !float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate)) return;
+
+        ViewModel.Player.SetRate(rate);
+        ViewModel.Notice = $"Playback speed: {value}x";
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
@@ -138,7 +239,9 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        ViewModel.Queue.CancelCurrent();
+        ViewModel.Player.PositionChanged -= Player_PositionChanged;
+        ViewModel.Player.DurationChanged -= Player_DurationChanged;
+        ViewModel.Queue.StopAll();
         base.OnClosed(e);
     }
 

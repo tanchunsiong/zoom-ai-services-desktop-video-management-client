@@ -5,5 +5,8 @@
   <ItemGroup>
     <ProjectReference Include="..\ZTranscribe.Core\ZTranscribe.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ZTranscribe.Core.Tests" />
+  </ItemGroup>
 </Project>
 

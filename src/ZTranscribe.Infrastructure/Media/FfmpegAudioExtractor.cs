@@ -17,11 +17,18 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,sample_rate,channels,bit_rate",
             "-of", "json", inputPath
         ], null, cancellationToken);
+        return ParseProbe(json);
+    }
+
+    internal static MediaProbe ParseProbe(string json)
+    {
         using var document = JsonDocument.Parse(json);
         var streams = document.RootElement.GetProperty("streams").EnumerateArray().ToArray();
         var audio = streams.FirstOrDefault(x => x.TryGetProperty("codec_type", out var type) && type.GetString() == "audio");
         if (audio.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("The selected file has no audio stream.");
-        var duration = double.Parse(document.RootElement.GetProperty("format").GetProperty("duration").GetString()!, CultureInfo.InvariantCulture);
+        var duration = double.Parse(
+            GetString(document.RootElement.GetProperty("format"), "duration"),
+            CultureInfo.InvariantCulture);
         return new MediaProbe(
             TimeSpan.FromSeconds(duration),
             GetString(audio, "codec_name"),
@@ -81,7 +88,12 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
     };
 
     private static string GetString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) ? value.GetString() ?? "" : "";
+        element.TryGetProperty(property, out var value) ? value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "",
+            JsonValueKind.Number => value.GetRawText(),
+            _ => ""
+        } : "";
     private static int GetInt(JsonElement element, string property) =>
         int.TryParse(GetString(element, property), out var value) ? value : 0;
     private static long? GetLong(JsonElement element, string property) =>

@@ -43,10 +43,39 @@ internal static class ProcessRunner
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await TryKillProcessTreeAsync(process);
+            throw;
+        }
         if (process.ExitCode != 0)
             throw new InvalidOperationException($"{Path.GetFileName(executable)} failed: {LastUsefulLine(error.ToString())}");
         return output.ToString();
+    }
+
+    private static async Task TryKillProcessTreeAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between HasExited and Kill.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Preserve cancellation as the caller-visible result if the OS already removed the process.
+        }
+        catch (TimeoutException)
+        {
+            // Cancellation must not hang indefinitely if the OS cannot reap the process promptly.
+        }
     }
 
     private static string LastUsefulLine(string error) =>

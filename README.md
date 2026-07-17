@@ -2,7 +2,7 @@
 
 A Windows desktop media queue for Zoom AI Services Scribe and Translator. Add video or audio files, process them in order, and review the resulting WebVTT captions over the original media in an embedded VLC player.
 
-This repository is private and is an early working cut intended for Windows testing. The processing core is UI-neutral so a native-feeling macOS shell can follow without rewriting the queue, VTT, Zoom, or FFmpeg orchestration.
+This is an open-source early working cut intended for Windows testing. The processing core is UI-neutral so a native-feeling macOS shell can follow without rewriting the queue, VTT, Zoom, or FFmpeg orchestration.
 
 ## What is included
 
@@ -23,7 +23,7 @@ This repository is private and is an early working cut intended for Windows test
 3. FFmpeg and FFprobe. Install a reputable Windows distribution, then either add its `bin` directory to `PATH` or enter the full executable paths in Settings.
 4. Zoom Build API key and API secret with AI Services access.
 
-No .NET SDK was installed or used in the Linux workspace that produced this first cut. Compilation is validated on the repository's Windows GitHub Actions runner.
+Compilation is validated locally and by the repository's Windows GitHub Actions workflow.
 
 ## Run from Visual Studio
 
@@ -56,6 +56,13 @@ Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work` and is removed in
 - `src/ZTranscribe.App` — WPF UI, Windows Credential Manager, LibVLCSharp playback.
 - `tests/ZTranscribe.Core.Tests` — dependency-free executable checks run in CI.
 - `docs` — UX rationale, architecture, security, Windows test plan, and macOS path.
+
+## Open source and license
+
+Z Transcribe's project-owned source code is released under the [MIT License](LICENSE).
+See [OPEN_SOURCE.md](OPEN_SOURCE.md) for contribution and security guidance, and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licensing and
+redistribution considerations.
 
 ## Current first-cut limitations
 

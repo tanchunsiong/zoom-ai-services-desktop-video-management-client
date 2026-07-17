@@ -9,3 +9,13 @@ publish/
 tools/ffmpeg/
 *.log
 
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+secrets.json
+*.key
+*.pem
+*.p12
+*.pfx
+

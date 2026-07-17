@@ -10,6 +10,7 @@
         <SolidColorBrush x:Key="TextPrimary" Color="#F7F8FC"/>
         <SolidColorBrush x:Key="TextMuted" Color="#9BA8BF"/>
         <SolidColorBrush x:Key="Border" Color="#2B3852"/>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibility"/>
 
         <Style TargetType="Window">
             <Setter Property="Background" Value="{StaticResource Surface}"/>
@@ -29,6 +30,34 @@
             <Setter Property="Background" Value="{StaticResource Accent}"/>
             <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="PlaybackRateButton" TargetType="RadioButton">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="RateBorder" Background="{StaticResource PanelRaised}"
+                                BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="RateBorder" Property="Background" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="RateBorder" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="{StaticResource Surface}"/>
@@ -69,7 +98,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Padding" Value="18,14"/>
             <Setter Property="Margin" Value="8,4"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{StaticResource AccentSoft}"/>

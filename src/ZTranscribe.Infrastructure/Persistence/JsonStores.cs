@@ -49,8 +49,12 @@ public sealed class JsonQueueStore(AppPaths paths) : IQueueStore
         if (!File.Exists(paths.QueueFile)) return [];
         await using var stream = File.OpenRead(paths.QueueFile);
         var jobs = await JsonSerializer.DeserializeAsync<List<QueueJob>>(stream, JsonDefaults.Options, cancellationToken) ?? [];
-        foreach (var job in jobs.Where(x => x.State is JobState.Preparing or JobState.Transcribing or JobState.Translating))
-            job.Report(JobState.Queued, 0, "Recovered after the application closed");
+        foreach (var job in jobs)
+        {
+            if (job.TranslationLanguage == job.SourceLanguage) job.TranslationLanguage = "";
+            if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating)
+                job.Report(JobState.Queued, 0, "Recovered after the application closed");
+        }
         return jobs;
     }
 
