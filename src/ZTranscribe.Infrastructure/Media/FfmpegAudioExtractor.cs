@@ -9,6 +9,8 @@ namespace ZTranscribe.Infrastructure.Media;
 public sealed partial class FfmpegAudioExtractor : IAudioExtractor
 {
     private const long ZoomPartLimitBytes = 100L * 1024L * 1024L;
+    private const long PcmPartTargetBytes = 95L * 1024L * 1024L;
+    internal sealed record AudioProfile(string Extension, string MimeType, string OutputCodec, bool StreamCopy);
 
     public async Task<MediaProbe> ProbeAsync(string inputPath, UserSettings settings, CancellationToken cancellationToken)
     {
@@ -51,9 +53,12 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         var profile = ProfileFor(probe.AudioCodec);
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);
-        var segment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
+        var requestedSegment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
+        var segment = SegmentDurationFor(probe, profile, requestedSegment);
         var count = Math.Max(1, (int)Math.Ceiling(probe.Duration.TotalSeconds / segment.TotalSeconds));
         var parts = new List<PreparedAudioPart>(count);
+        if (!profile.StreamCopy)
+            job.StatusMessage = $"Decoding {probe.AudioCodec} to PCM WAV without resampling or remixing";
 
         for (var index = 0; index < count; index++)
         {
@@ -61,14 +66,11 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             var start = TimeSpan.FromSeconds(index * segment.TotalSeconds);
             var duration = probe.Duration - start < segment ? probe.Duration - start : segment;
             var output = Path.Combine(workDirectory, $"audio-{index + 1:000}.{profile.Extension}");
-            await ProcessRunner.RunAsync(settings.FfmpegPath,
-            [
-                "-hide_banner", "-nostdin", "-y",
-                "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-                "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-                "-i", job.SourcePath,
-                "-map", "0:a:0", "-vn", "-c:a", "copy", output
-            ], null, cancellationToken);
+            await ProcessRunner.RunAsync(
+                settings.FfmpegPath,
+                BuildExtractionArguments(job.SourcePath, output, start, duration, profile),
+                null,
+                cancellationToken);
 
             var outputInfo = new FileInfo(output);
             if (outputInfo.Length > ZoomPartLimitBytes)
@@ -79,15 +81,41 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         return parts;
     }
 
-    private static (string Extension, string MimeType) ProfileFor(string codec) => codec.ToLowerInvariant() switch
+    internal static AudioProfile ProfileFor(string codec) => codec.ToLowerInvariant() switch
     {
-        "aac" or "alac" => ("m4a", "audio/mp4"),
-        "mp3" => ("mp3", "audio/mpeg"),
-        "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le" => ("wav", "audio/wav"),
-        _ => throw new InvalidOperationException(
-            $"Audio codec '{codec}' cannot be placed in WAV, M4A, or MP3 without changing the audio. " +
-            "Z Transcribe will not silently transcode it; convert it explicitly first.")
+        "aac" or "alac" => new("m4a", "audio/mp4", "copy", true),
+        "mp3" => new("mp3", "audio/mpeg", "copy", true),
+        "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le" =>
+            new("wav", "audio/wav", "copy", true),
+        _ => new("wav", "audio/wav", "pcm_s16le", false)
     };
+
+    internal static TimeSpan SegmentDurationFor(
+        MediaProbe probe,
+        AudioProfile profile,
+        TimeSpan requested)
+    {
+        if (profile.StreamCopy) return requested;
+        var sampleRate = probe.SampleRate > 0 ? probe.SampleRate : 48_000;
+        var channels = probe.Channels > 0 ? probe.Channels : 2;
+        var pcmBytesPerSecond = checked((long)sampleRate * channels * 2L);
+        var maximumSeconds = Math.Max(1, PcmPartTargetBytes / pcmBytesPerSecond);
+        return TimeSpan.FromSeconds(Math.Min(requested.TotalSeconds, maximumSeconds));
+    }
+
+    internal static IReadOnlyList<string> BuildExtractionArguments(
+        string input,
+        string output,
+        TimeSpan start,
+        TimeSpan duration,
+        AudioProfile profile) =>
+    [
+        "-hide_banner", "-nostdin", "-y",
+        "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+        "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+        "-i", input,
+        "-map", "0:a:0", "-vn", "-c:a", profile.OutputCodec, output
+    ];
 
     private static string GetString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) ? value.ValueKind switch

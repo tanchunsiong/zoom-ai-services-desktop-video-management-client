@@ -22,7 +22,7 @@
 
 - Missing FFmpeg and ffprobe paths.
 - Video without audio.
-- Unsupported audio codec that would require transcoding.
+- WMA or another incompatible codec; confirm PCM WAV fallback preserves sample rate and channels and remains under 100 MB per part.
 - Invalid credentials / missing AI Services entitlement.
 - HTTP 429 and transient 5xx responses.
 - Read-only output directory, source removed after queuing, and network loss mid-upload.

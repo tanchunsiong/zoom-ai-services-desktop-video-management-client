@@ -18,8 +18,8 @@ WPF shell
 ## Processing lifecycle
 
 1. Probe source with ffprobe and reject files without an audio stream.
-2. Map the source codec to a Zoom-supported container.
-3. Extract time-bounded audio-only parts using `-map 0:a:0 -vn -c:a copy`.
+2. Map a compatible source codec to a Zoom-supported container, or select PCM WAV fallback.
+3. Extract time-bounded audio-only parts using stream copy where possible; incompatible codecs are decoded to PCM without resampling or remixing.
 4. Reject any part above Zoom Scribe's request size limit.
 5. Send up to the configured number of parts concurrently.
 6. Offset each returned segment by its part start, sort, and renumber.

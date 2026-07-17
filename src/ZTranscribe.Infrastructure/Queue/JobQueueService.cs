@@ -354,7 +354,7 @@ public sealed class JobQueueService(
             job.SummaryInputCharacters = 0;
             job.SummaryOutputCharacters = 0;
             job.SummaryPath = null;
-            job.Report(JobState.Preparing, 4, "Inspecting media and copying the audio stream");
+            job.Report(JobState.Preparing, 4, "Inspecting media and preparing a Zoom-compatible audio stream");
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
                 job.Progress = 4 + (int)Math.Round(value * 16));

@@ -258,6 +258,28 @@ Check("No-audio media has zero estimated Scribe cost", () =>
     return JobCostEstimator.Compare(job, new UserSettings()).Estimate.ScribeUsd == 0m;
 });
 
+Check("WMA uses PCM WAV compatibility extraction", () =>
+{
+    var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
+    var arguments = FfmpegAudioExtractor.BuildExtractionArguments(
+        "input.wmv", "output.wav", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile);
+    return profile.Extension == "wav"
+        && profile.MimeType == "audio/wav"
+        && !profile.StreamCopy
+        && arguments.Contains("pcm_s16le")
+        && !arguments.Contains("-ar")
+        && !arguments.Contains("-ac");
+});
+
+Check("PCM compatibility segments stay below the Zoom part limit", () =>
+{
+    var probe = new MediaProbe(TimeSpan.FromHours(1), "wmav2", 48_000, 2, 128_000, true);
+    var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
+    var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
+    var estimatedBytes = segment.TotalSeconds * probe.SampleRate * probe.Channels * 2;
+    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 95L * 1024L * 1024L;
+});
+
 await CheckAsync("Canceled child process is terminated", async () =>
 {
     var markerPath = Path.Combine(Path.GetTempPath(), $"ztranscribe-process-{Guid.NewGuid():N}.pid");

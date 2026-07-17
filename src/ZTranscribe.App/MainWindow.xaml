@@ -62,7 +62,7 @@
                         </StackPanel>
                     </Grid>
                     <Border Grid.Row="1" Margin="0,20,0,14" Padding="14" Background="#18243A" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8">
-                        <TextBlock Text="FFmpeg copies the first audio stream into a Zoom-supported container. Video is never uploaded, and audio is not resampled or recompressed." Foreground="#C5D0E4"/>
+                        <TextBlock Text="FFmpeg copies compatible audio streams; incompatible codecs are decoded to PCM WAV without resampling or remixing. Video is never uploaded." Foreground="#C5D0E4"/>
                     </Border>
                     <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}"
                               IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
