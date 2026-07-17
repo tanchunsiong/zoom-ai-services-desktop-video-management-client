@@ -1,6 +1,6 @@
 # Z Transcribe Desktop
 
-A Windows desktop media queue for Zoom AI Services Scribe and Translator. Add video or audio files, process them in order, and review the resulting WebVTT captions over the original media in an embedded VLC player.
+A Windows desktop media queue for Zoom AI Services Scribe, Translator, and Summarizer. Add video or audio files, process them in order, and review the resulting captions and summaries alongside the original media in an embedded VLC player.
 
 This is an open-source early working cut intended for Windows testing. The processing core is UI-neutral so a native-feeling macOS shell can follow without rewriting the queue, VTT, Zoom, or FFmpeg orchestration.
 
@@ -12,8 +12,9 @@ This is an open-source early working cut intended for Windows testing. The proce
 - FFmpeg/FFprobe integration that selects the first audio stream with `-vn -c:a copy`. It does **not** alter speed, resample, remix, or recompress audio.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Original and translated `.vtt` files plus transcript JSON.
-- Embedded LibVLCSharp player with WebVTT overlay and a seekable caption timeline.
-- Per-job and all-jobs Scribe/Translator costs. Queue rows are labeled `Estimate` before processing and `Actual` after completion; Scribe appears as soon as FFprobe reads the duration, while completed translations use measured API character usage.
+- Optional row-level Zoom Summarizer output, saved as `summary.md` and shown in the Review panel.
+- Embedded LibVLCSharp player with software-decoded video, captions below the player, and a seekable caption timeline.
+- Separate per-job and all-jobs `Estimate` and `Actual` cost columns, itemized for Scribe, Translator, and Summarizer. Pre-transcript character estimates are language-aware; completed jobs use measured Zoom API usage for Translator and Summarizer.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
 - Windows GitHub Actions build and downloadable `win-x64` workflow artifact.
 

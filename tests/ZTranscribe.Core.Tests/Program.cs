@@ -63,12 +63,12 @@ Check("Cost estimate itemizes Scribe and direct translation", () =>
         DurationSeconds = 120,
         TranscriptCharacters = 1000
     };
-    var estimate = JobCostEstimator.Estimate(job, settings);
-    return estimate.ScribeUsd == 0.02m
-        && estimate.TranslateUsd == 0.04m
-        && estimate.TotalUsd == 0.06m
-        && estimate.TranslationBillableCharacters == 2000
-        && !estimate.UsesActualTranslationUsage;
+    var comparison = JobCostEstimator.Compare(job, settings);
+    return comparison.Estimate.ScribeUsd == 0.02m
+        && comparison.Estimate.TranslateUsd == 0.04m
+        && comparison.Estimate.TotalUsd == 0.06m
+        && comparison.EstimatedTranslationCharacters == 2000
+        && comparison.Actual.TotalUsd is null;
 });
 
 Check("Default Scribe rate estimates cost as soon as duration is known", () =>
@@ -78,8 +78,22 @@ Check("Default Scribe rate estimates cost as soon as duration is known", () =>
         SourcePath = "sample.mp4",
         DurationSeconds = 120
     };
-    var estimate = JobCostEstimator.Estimate(job, new UserSettings());
-    return estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
+    var comparison = JobCostEstimator.Compare(job, new UserSettings());
+    return comparison.Estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
+});
+
+Check("Japanese pre-transcription translation estimate uses language-aware density", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "ja-JP",
+        TranslationLanguage = "zh-CN",
+        DurationSeconds = 60
+    };
+    var comparison = JobCostEstimator.Compare(job, new UserSettings());
+    return comparison.EstimatedTranslationCharacters == 1200
+        && job.EstimateQualityLabel == "Rough";
 });
 
 Check("Bridged translation estimates both API steps", () =>
@@ -92,8 +106,8 @@ Check("Bridged translation estimates both API steps", () =>
         TranslationLanguage = "zh-CN",
         TranscriptCharacters = 1000
     };
-    var estimate = JobCostEstimator.Estimate(job, settings);
-    return estimate.TranslateUsd == 0.08m && estimate.TranslationBillableCharacters == 4000;
+    var comparison = JobCostEstimator.Compare(job, settings);
+    return comparison.Estimate.TranslateUsd == 0.08m && comparison.EstimatedTranslationCharacters == 4000;
 });
 
 Check("Actual Zoom translation usage replaces the pre-job estimate", () =>
@@ -108,13 +122,14 @@ Check("Actual Zoom translation usage replaces the pre-job estimate", () =>
         TranslationInputCharacters = 1800,
         TranslationOutputCharacters = 1200
     };
-    var estimate = JobCostEstimator.Estimate(job, settings);
-    return estimate.TranslateUsd == 0.03m
-        && estimate.TranslationBillableCharacters == 3000
-        && estimate.UsesActualTranslationUsage;
+    job.CompletedAt = DateTimeOffset.UtcNow;
+    var comparison = JobCostEstimator.Compare(job, settings);
+    return comparison.Estimate.TranslateUsd == 0.02m
+        && comparison.Actual.TranslateUsd == 0.03m
+        && comparison.ActualTranslationCharacters == 3000;
 });
 
-Check("Completed rows identify measured usage as actual", () =>
+Check("Actual costs remain unavailable until completion", () =>
 {
     var job = new QueueJob
     {
@@ -125,10 +140,10 @@ Check("Completed rows identify measured usage as actual", () =>
         TranslationInputCharacters = 1800,
         TranslationOutputCharacters = 1200
     };
-    var beforeCompletion = job.CostBasisLabel == "Estimate";
+    var beforeCompletion = JobCostEstimator.Compare(job, new UserSettings()).Actual.TotalUsd is null;
     job.CompletedAt = DateTimeOffset.UtcNow;
     job.Report(JobState.Ready, 100, "Ready");
-    return beforeCompletion && job.CostBasisLabel == "Actual";
+    return beforeCompletion && JobCostEstimator.Compare(job, new UserSettings()).Actual.TotalUsd is not null;
 });
 
 Check("Completed transcription remains estimated until requested translation finishes", () =>
@@ -137,10 +152,31 @@ Check("Completed transcription remains estimated until requested translation fin
     {
         SourcePath = "sample.mp4",
         TranslationLanguage = "fr-FR",
+        TranscriptCharacters = 1000,
         CompletedAt = DateTimeOffset.UtcNow
     };
     job.Report(JobState.Ready, 100, "Transcript ready; translation has not been generated");
-    return job.CostBasisLabel == "Estimate";
+    return JobCostEstimator.Compare(job, new UserSettings()).Actual.TranslateUsd is null;
+});
+
+Check("Summarizer estimate and actual use separate character totals", () =>
+{
+    var settings = new UserSettings { SummarizerUsdPerMillionCharacters = 0.40m };
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        DurationSeconds = 60,
+        TranscriptCharacters = 10_000,
+        Summarize = true,
+        SummaryInputCharacters = 10_000,
+        SummaryOutputCharacters = 1_000,
+        CompletedAt = DateTimeOffset.UtcNow
+    };
+    var comparison = JobCostEstimator.Compare(job, settings);
+    return comparison.EstimatedSummaryCharacters == 11_000
+        && comparison.ActualSummaryCharacters == 11_000
+        && comparison.Estimate.SummarizeUsd == 0.0044m
+        && comparison.Actual.SummarizeUsd == 0.0044m;
 });
 
 Check("Missing rates remain unavailable instead of appearing free", () =>
@@ -151,12 +187,15 @@ Check("Missing rates remain unavailable instead of appearing free", () =>
         TranslationLanguage = "fr-FR",
         DurationSeconds = 60
     };
-    var estimate = JobCostEstimator.Estimate(job, new UserSettings
+    var comparison = JobCostEstimator.Compare(job, new UserSettings
     {
         ScribeUsdPerMinute = 0,
-        TranslatorUsdPerMillionCharacters = 0
+        TranslatorUsdPerMillionCharacters = 0,
+        SummarizerUsdPerMillionCharacters = 0
     });
-    return estimate.ScribeUsd is null && estimate.TranslateUsd is null && estimate.TotalUsd is null;
+    return comparison.Estimate.ScribeUsd is null
+        && comparison.Estimate.TranslateUsd is null
+        && comparison.Estimate.TotalUsd is null;
 });
 
 Check("FFprobe accepts numeric and string fields", () =>

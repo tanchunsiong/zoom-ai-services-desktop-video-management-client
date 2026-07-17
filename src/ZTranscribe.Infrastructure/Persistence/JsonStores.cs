@@ -52,7 +52,7 @@ public sealed class JsonQueueStore(AppPaths paths) : IQueueStore
         foreach (var job in jobs)
         {
             if (job.TranslationLanguage == job.SourceLanguage) job.TranslationLanguage = "";
-            if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating)
+            if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating or JobState.Summarizing)
                 job.Report(JobState.Queued, 0, "Recovered after the application closed");
         }
         return jobs;

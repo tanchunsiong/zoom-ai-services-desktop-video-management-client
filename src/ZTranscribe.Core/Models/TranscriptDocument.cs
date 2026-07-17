@@ -21,6 +21,15 @@ public sealed record TranslationResult(
     long InputCharacters,
     long OutputCharacters);
 
+public sealed record SummaryResult(
+    string Text,
+    long InputCharacters,
+    long OutputCharacters,
+    string? RequestId = null,
+    string? Model = null);
+
+public sealed record SummaryOption(bool Enabled, string Name);
+
 public sealed record PreparedAudioPart(
     int Index,
     string Path,
@@ -45,6 +54,7 @@ public sealed class UserSettings
 {
     public const decimal DefaultScribeFastUsdPerMinute = 0.0033m;
     public const decimal DefaultTranslatorUsdPerMillionCharacters = 7.50m;
+    public const decimal DefaultSummarizerUsdPerMillionCharacters = 0.40m;
 
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string FfprobePath { get; set; } = "ffprobe.exe";
@@ -53,6 +63,7 @@ public sealed class UserSettings
     public int SegmentMinutes { get; set; } = 15;
     public decimal ScribeUsdPerMinute { get; set; } = DefaultScribeFastUsdPerMinute;
     public decimal TranslatorUsdPerMillionCharacters { get; set; } = DefaultTranslatorUsdPerMillionCharacters;
-    public int EstimatedTranslationCharactersPerMinute { get; set; } = 1200;
+    public decimal SummarizerUsdPerMillionCharacters { get; set; } = DefaultSummarizerUsdPerMillionCharacters;
+    public int EstimatedTranslationCharactersPerMinute { get; set; }
 }
 

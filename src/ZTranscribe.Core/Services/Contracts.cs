@@ -47,6 +47,12 @@ public interface IZoomAiClient
         ApiCredentials credentials,
         CancellationToken cancellationToken);
 
+    Task<SummaryResult> SummarizeAsync(
+        string text,
+        string language,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken);
+
     Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken);
 }
 

@@ -13,6 +13,8 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
 {
     private static readonly Uri ScribeUri = new("https://api.zoom.us/v2/aiservices/scribe/transcribe");
     private static readonly Uri TranslateUri = new("https://api.zoom.us/v2/aiservices/translator/translate");
+    private static readonly Uri SummarizeUri = new("https://api.zoom.us/v2/aiservices/summarizer/summarize");
+    private const int SummaryChunkBytes = 80 * 1024;
     private static readonly HashSet<HttpStatusCode> Retryable =
     [HttpStatusCode.TooManyRequests, HttpStatusCode.BadGateway, HttpStatusCode.ServiceUnavailable, HttpStatusCode.GatewayTimeout];
 
@@ -88,6 +90,55 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
             outputCharacters);
     }
 
+    public async Task<SummaryResult> SummarizeAsync(
+        string text,
+        string language,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new SummaryResult("No spoken content was available to summarize.", 0, 0);
+
+        var chunks = SplitUtf8(text, SummaryChunkBytes);
+        if (chunks.Count == 1)
+            return await SummarizeTextAsync(chunks[0], language, "full_summary", credentials, cancellationToken);
+
+        long inputCharacters = 0;
+        long outputCharacters = 0;
+        var summaries = new List<string>();
+        foreach (var chunk in chunks)
+        {
+            var partial = await SummarizeTextAsync(chunk, language, "summary", credentials, cancellationToken);
+            inputCharacters += partial.InputCharacters;
+            outputCharacters += partial.OutputCharacters;
+            summaries.Add(partial.Text);
+        }
+
+        var combined = string.Join("\n\n", summaries);
+        while (Encoding.UTF8.GetByteCount(combined) > SummaryChunkBytes)
+        {
+            var reduced = new List<string>();
+            foreach (var chunk in SplitUtf8(combined, SummaryChunkBytes))
+            {
+                var partial = await SummarizeTextAsync(chunk, language, "summary", credentials, cancellationToken);
+                inputCharacters += partial.InputCharacters;
+                outputCharacters += partial.OutputCharacters;
+                reduced.Add(partial.Text);
+            }
+            var next = string.Join("\n\n", reduced);
+            if (next.Length >= combined.Length)
+                throw new InvalidOperationException("The transcript is too large for Zoom Summarizer Fast mode.");
+            combined = next;
+        }
+
+        var final = await SummarizeTextAsync(combined, language, "full_summary", credentials, cancellationToken);
+        return final with
+        {
+            InputCharacters = inputCharacters + final.InputCharacters,
+            OutputCharacters = outputCharacters + final.OutputCharacters
+        };
+    }
+
     public async Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken)
     {
         // Authentication is validated locally here. A paid AI request is intentionally not made.
@@ -130,6 +181,69 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
             outputCharacters = ReadInt64(usage, "output_units", outputCharacters);
         }
         return new TranslationTextResult(translatedText, inputCharacters, outputCharacters);
+    }
+
+    private async Task<SummaryResult> SummarizeTextAsync(
+        string text,
+        string language,
+        string task,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendWithRetryAsync(() =>
+        {
+            var request = Authorized(HttpMethod.Post, SummarizeUri, credentials);
+            request.Content = JsonContent.Create(new
+            {
+                input = new { text },
+                config = new
+                {
+                    summary_type = "CONVERSATION",
+                    task,
+                    language,
+                    output_format = "text"
+                }
+            });
+            return Task.FromResult(request);
+        }, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, json, "Zoom Summarizer");
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var result = root.GetProperty("result");
+        var summary = task == "full_summary"
+            ? FirstString(result, "full_summary", "summary_text", "recap")
+            : FirstString(result, "summary_text", "full_summary", "recap");
+        long inputCharacters = text.Length;
+        long outputCharacters = summary.Length;
+        if (root.TryGetProperty("usage", out var usage))
+        {
+            inputCharacters = ReadInt64(usage, "input_units", inputCharacters);
+            outputCharacters = ReadInt64(usage, "output_units", outputCharacters);
+        }
+        return new SummaryResult(summary, inputCharacters, outputCharacters,
+            FirstString(root, "request_id"), FirstString(root, "model"));
+    }
+
+    private static IReadOnlyList<string> SplitUtf8(string text, int maximumBytes)
+    {
+        var chunks = new List<string>();
+        var current = new StringBuilder();
+        var bytes = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var runeBytes = rune.Utf8SequenceLength;
+            if (bytes + runeBytes > maximumBytes && current.Length > 0)
+            {
+                chunks.Add(current.ToString());
+                current.Clear();
+                bytes = 0;
+            }
+            current.Append(rune.ToString());
+            bytes += runeBytes;
+        }
+        if (current.Length > 0) chunks.Add(current.ToString());
+        return chunks;
     }
 
     private async Task<HttpResponseMessage> SendWithRetryAsync(

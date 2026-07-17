@@ -1,5 +1,4 @@
 using LibVLCSharp.Shared;
-using System.IO;
 using ZTranscribe.Core.Models;
 
 namespace ZTranscribe.App.Services;
@@ -13,29 +12,31 @@ public sealed class VlcPlaybackService : IDisposable
     public QueueJob? CurrentJob { get; private set; }
     public event Action<TimeSpan>? PositionChanged;
     public event Action<TimeSpan>? DurationChanged;
+    public event Action<string>? PlaybackFailed;
 
     public VlcPlaybackService()
     {
         LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC("--no-video-title-show");
+        _libVlc = new LibVLC("--no-video-title-show", "--avcodec-hw=none");
         MediaPlayer = new MediaPlayer(_libVlc);
         MediaPlayer.TimeChanged += (_, eventArgs) =>
             PositionChanged?.Invoke(TimeSpan.FromMilliseconds(eventArgs.Time));
         MediaPlayer.LengthChanged += (_, eventArgs) =>
             DurationChanged?.Invoke(TimeSpan.FromMilliseconds(eventArgs.Length));
         MediaPlayer.Playing += (_, _) => MediaPlayer.SetRate(_playbackRate);
+        MediaPlayer.EncounteredError += (_, _) =>
+            PlaybackFailed?.Invoke("The media could not be played. Check that the file is still available and readable.");
     }
 
-    public void Open(QueueJob job, string? subtitlePath)
+    public void Open(QueueJob job)
     {
         _media?.Dispose();
-        _media = new Media(_libVlc, new Uri(job.SourcePath));
-        if (!string.IsNullOrWhiteSpace(subtitlePath) && File.Exists(subtitlePath))
-            _media.AddOption($":sub-file={new Uri(subtitlePath).AbsoluteUri}");
+        _media = new Media(_libVlc, job.SourcePath, FromType.FromPath);
         CurrentJob = job;
         PositionChanged?.Invoke(TimeSpan.Zero);
         DurationChanged?.Invoke(TimeSpan.Zero);
-        MediaPlayer.Play(_media);
+        if (!MediaPlayer.Play(_media))
+            PlaybackFailed?.Invoke("The media player could not start this file.");
     }
 
     public void Play() => MediaPlayer.Play();

@@ -99,12 +99,32 @@ public sealed class JobQueueService(
             job.TranslatedVttPath = null;
             job.TranslationInputCharacters = 0;
             job.TranslationOutputCharacters = 0;
+            job.SummaryPath = null;
+            job.SummaryInputCharacters = 0;
+            job.SummaryOutputCharacters = 0;
         }
         job.TranslationLanguage = translationLanguage;
         if (job.State == JobState.Ready)
             job.StatusMessage = string.IsNullOrWhiteSpace(translationLanguage)
                 ? "Transcript is ready to review"
                 : "Transcript ready; translation has not been generated";
+        await SaveAsync();
+    }
+
+    public async Task UpdateSummarizeAsync(QueueJob job, bool summarize)
+    {
+        if (!job.CanConfigureLanguages)
+            throw new InvalidOperationException("Summarizer cannot be changed while this job is processing.");
+        if (job.Summarize == summarize) return;
+
+        job.Summarize = summarize;
+        job.SummaryInputCharacters = 0;
+        job.SummaryOutputCharacters = 0;
+        job.SummaryPath = null;
+        if (job.State == JobState.Ready)
+            job.StatusMessage = summarize
+                ? "Transcript ready; summary has not been generated"
+                : "Transcript is ready to review";
         await SaveAsync();
     }
 
@@ -179,9 +199,60 @@ public sealed class JobQueueService(
         }
     }
 
+    public async Task SummarizeExistingAsync(QueueJob job)
+    {
+        if (IsRunning) throw new InvalidOperationException("Wait for the active queue operation to finish.");
+        if (!job.CanReview || !File.Exists(job.OriginalVttPath))
+            throw new InvalidOperationException("Complete transcription before summarizing this job.");
+        if (!job.Summarize)
+            throw new InvalidOperationException("Choose Summarize in this job's queue row first.");
+
+        var credentials = await credentialVault.LoadAsync();
+        if (credentials is not { IsComplete: true })
+            throw new InvalidOperationException("Add your Zoom API key and API secret in Settings first.");
+
+        _runCancellation = new CancellationTokenSource();
+        _currentCancellation = CancellationTokenSource.CreateLinkedTokenSource(_runCancellation.Token);
+        IsRunning = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            job.Error = null;
+            var cancellationToken = _currentCancellation.Token;
+            var hasTranslatedCaptions = !string.IsNullOrWhiteSpace(job.TranslationLanguage) &&
+                File.Exists(job.TranslatedVttPath);
+            var captionPath = hasTranslatedCaptions ? job.TranslatedVttPath! : job.OriginalVttPath;
+            var cues = WebVtt.Parse(await File.ReadAllTextAsync(captionPath, cancellationToken));
+            var output = Path.GetDirectoryName(job.OriginalVttPath)!;
+            var language = hasTranslatedCaptions ? job.TranslationLanguage : job.SourceLanguage;
+            await GenerateSummaryAsync(job, cues, language, output, credentials, cancellationToken);
+            job.Report(JobState.Ready, 100, "Summary is ready to review");
+        }
+        catch (OperationCanceledException)
+        {
+            job.Report(JobState.Ready, 100, "Transcript ready; summarization canceled");
+        }
+        catch (Exception exception)
+        {
+            job.Error = exception.Message;
+            job.Report(JobState.Ready, 100, "Transcript ready; summarization failed");
+            throw;
+        }
+        finally
+        {
+            await SaveAsync();
+            IsRunning = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            _currentCancellation.Dispose();
+            _currentCancellation = null;
+            _runCancellation.Dispose();
+            _runCancellation = null;
+        }
+    }
+
     public async Task RemoveAsync(QueueJob job)
     {
-        if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating)
+        if (job.CanEnd)
             throw new InvalidOperationException("Cancel the active job before removing it.");
         Jobs.Remove(job);
         await SaveAsync();
@@ -285,6 +356,9 @@ public sealed class JobQueueService(
             job.TranscriptCharacters = 0;
             job.TranslationInputCharacters = 0;
             job.TranslationOutputCharacters = 0;
+            job.SummaryInputCharacters = 0;
+            job.SummaryOutputCharacters = 0;
+            job.SummaryPath = null;
             job.Report(JobState.Preparing, 4, "Inspecting media and copying the audio stream");
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
@@ -318,6 +392,8 @@ public sealed class JobQueueService(
                 .ToArray();
             var original = new TranscriptDocument(job.SourceLanguage, originalCues,
                 string.Join("\n", originalCues.Select(x => x.Text)));
+            IReadOnlyList<TranscriptCue> summaryCues = originalCues;
+            var summaryLanguage = job.SourceLanguage;
             job.TranscriptCharacters = original.Text.Length;
             var output = OutputDirectory(job, settings);
             Directory.CreateDirectory(output);
@@ -345,10 +421,20 @@ public sealed class JobQueueService(
                 }
                 job.TranslatedVttPath = Path.Combine(output, $"translated-{job.TranslationLanguage}.vtt");
                 await File.WriteAllTextAsync(job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
+                summaryCues = translated;
+                summaryLanguage = job.TranslationLanguage;
+            }
+
+            if (job.Summarize)
+            {
+                await GenerateSummaryAsync(
+                    job, summaryCues, summaryLanguage, output, credentials, cancellationToken);
             }
 
             job.CompletedAt = DateTimeOffset.UtcNow;
-            job.Report(JobState.Ready, 100, "Transcript is ready to review");
+            job.Report(JobState.Ready, 100, job.Summarize
+                ? "Captions and summary are ready to review"
+                : "Transcript is ready to review");
         }
         catch (OperationCanceledException)
         {
@@ -364,6 +450,27 @@ public sealed class JobQueueService(
             try { if (Directory.Exists(work)) Directory.Delete(work, true); } catch { /* next launch cleanup */ }
             await SaveAsync();
         }
+    }
+
+    private async Task GenerateSummaryAsync(
+        QueueJob job,
+        IReadOnlyList<TranscriptCue> cues,
+        string language,
+        string output,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        job.SummaryInputCharacters = 0;
+        job.SummaryOutputCharacters = 0;
+        job.Report(JobState.Summarizing, 92, $"Summarizing in {LanguageCatalog.NameFor(language)}");
+        await SaveAsync();
+        var text = string.Join("\n", cues.Select(cue => cue.Text));
+        var result = await zoom.SummarizeAsync(text, language, credentials, cancellationToken);
+        job.SummaryInputCharacters = result.InputCharacters;
+        job.SummaryOutputCharacters = result.OutputCharacters;
+        job.SummaryPath = Path.Combine(output, "summary.md");
+        await File.WriteAllTextAsync(job.SummaryPath, result.Text, cancellationToken);
+        await SaveAsync();
     }
 
     private static string OutputDirectory(QueueJob job, UserSettings settings)

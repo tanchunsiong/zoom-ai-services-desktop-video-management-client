@@ -23,6 +23,7 @@ public partial class MainWindow : Window
         DataContext = viewModel;
         viewModel.Player.PositionChanged += Player_PositionChanged;
         viewModel.Player.DurationChanged += Player_DurationChanged;
+        viewModel.Player.PlaybackFailed += Player_PlaybackFailed;
     }
 
     private async void AddFiles_Click(object sender, RoutedEventArgs e)
@@ -140,6 +141,18 @@ public partial class MainWindow : Window
         catch (Exception exception) { ShowError(exception); }
     }
 
+    private async void SummarizeSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedJob is not { } job) return;
+        try
+        {
+            ViewModel.Notice = "Summarizing the existing transcript";
+            await ViewModel.Queue.SummarizeExistingAsync(job);
+            ViewModel.Notice = job.StatusMessage;
+        }
+        catch (Exception exception) { ShowError(exception); }
+    }
+
     private async void JobLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is not ComboBox { IsKeyboardFocusWithin: true, DataContext: QueueJob job, SelectedItem: LanguageOption option } comboBox)
@@ -157,6 +170,23 @@ public partial class MainWindow : Window
             comboBox.SelectedValue = Equals(comboBox.Tag, "source")
                 ? job.SourceLanguage
                 : job.TranslationLanguage;
+            ShowError(exception);
+        }
+    }
+
+    private async void JobSummary_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox
+            {
+                IsKeyboardFocusWithin: true,
+                DataContext: QueueJob job,
+                SelectedItem: SummaryOption option
+            }) return;
+
+        try { await ViewModel.Queue.UpdateSummarizeAsync(job, option.Enabled); }
+        catch (Exception exception)
+        {
+            ((ComboBox)sender).SelectedValue = job.Summarize;
             ShowError(exception);
         }
     }
@@ -209,6 +239,9 @@ public partial class MainWindow : Window
     private void Player_DurationChanged(TimeSpan duration) =>
         Dispatcher.BeginInvoke(() => ViewModel.UpdatePlaybackDuration(duration));
 
+    private void Player_PlaybackFailed(string message) =>
+        Dispatcher.BeginInvoke(() => ViewModel.Notice = message);
+
     private void Play_Click(object sender, RoutedEventArgs e) => ViewModel.Player.Play();
 
     private void PausePlayback_Click(object sender, RoutedEventArgs e) => ViewModel.Player.Pause();
@@ -241,6 +274,7 @@ public partial class MainWindow : Window
     {
         ViewModel.Player.PositionChanged -= Player_PositionChanged;
         ViewModel.Player.DurationChanged -= Player_DurationChanged;
+        ViewModel.Player.PlaybackFailed -= Player_PlaybackFailed;
         ViewModel.Queue.StopAll();
         base.OnClosed(e);
     }

@@ -11,6 +11,7 @@ public enum JobState
     Preparing,
     Transcribing,
     Translating,
+    Summarizing,
     Ready,
     Failed,
     Canceled
@@ -30,6 +31,9 @@ public sealed class QueueJob : INotifyPropertyChanged
     private long _transcriptCharacters;
     private long _translationInputCharacters;
     private long _translationOutputCharacters;
+    private bool _summarize;
+    private long _summaryInputCharacters;
+    private long _summaryOutputCharacters;
     private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -85,9 +89,34 @@ public sealed class QueueJob : INotifyPropertyChanged
             if (Set(ref _translationOutputCharacters, Math.Max(0, value))) NotifyCostChanged();
         }
     }
+    public bool Summarize
+    {
+        get => _summarize;
+        set
+        {
+            if (Set(ref _summarize, value)) NotifyCostChanged();
+        }
+    }
+    public long SummaryInputCharacters
+    {
+        get => _summaryInputCharacters;
+        set
+        {
+            if (Set(ref _summaryInputCharacters, Math.Max(0, value))) NotifyCostChanged();
+        }
+    }
+    public long SummaryOutputCharacters
+    {
+        get => _summaryOutputCharacters;
+        set
+        {
+            if (Set(ref _summaryOutputCharacters, Math.Max(0, value))) NotifyCostChanged();
+        }
+    }
     public string? OriginalVttPath { get; set; }
     public string? TranslatedVttPath { get; set; }
     public string? TranscriptJsonPath { get; set; }
+    public string? SummaryPath { get; set; }
     public List<JobEvent> Events { get; init; } = [];
 
     public JobState State
@@ -117,34 +146,37 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public bool CanReview => State == JobState.Ready && File.Exists(OriginalVttPath);
     [JsonIgnore]
-    public bool CanConfigureLanguages => State is not (JobState.Preparing or JobState.Transcribing or JobState.Translating);
+    public bool CanConfigureLanguages => State is not (JobState.Preparing or JobState.Transcribing or JobState.Translating or JobState.Summarizing);
     [JsonIgnore]
     public bool CanConfigureSourceLanguage => State is JobState.Queued or JobState.Failed or JobState.Canceled;
     [JsonIgnore]
     public bool CanStart => State is JobState.Queued or JobState.Canceled;
     [JsonIgnore]
-    public bool CanEnd => State is JobState.Preparing or JobState.Transcribing or JobState.Translating;
+    public bool CanEnd => State is JobState.Preparing or JobState.Transcribing or JobState.Translating or JobState.Summarizing;
     [JsonIgnore]
     public bool CanRetry => State == JobState.Failed;
     [JsonIgnore]
     public bool CanRemove => !CanEnd;
     [JsonIgnore]
-    public JobCostEstimate CostEstimate => JobCostEstimator.Estimate(this, _costSettings);
+    public JobCostComparison CostComparison => JobCostEstimator.Compare(this, _costSettings);
     [JsonIgnore]
-    public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostEstimate.ScribeUsd);
+    public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.ScribeUsd);
     [JsonIgnore]
-    public string EstimatedTranslateCostLabel => JobCostEstimator.FormatUsd(CostEstimate.TranslateUsd);
+    public string EstimatedTranslateCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.TranslateUsd);
     [JsonIgnore]
-    public string EstimatedTotalCostLabel => JobCostEstimator.FormatUsd(CostEstimate.TotalUsd);
+    public string EstimatedSummaryCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.SummarizeUsd);
     [JsonIgnore]
-    public string CostBasisLabel => CompletedAt is not null &&
-        (string.IsNullOrWhiteSpace(TranslationLanguage) || CostEstimate.UsesActualTranslationUsage)
-            ? "Actual"
-            : "Estimate";
+    public string EstimatedTotalCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.TotalUsd);
     [JsonIgnore]
-    public string TranslationCostBasisLabel => CostEstimate.TranslationBillableCharacters == 0
-        ? "No translation"
-        : CostEstimate.UsesActualTranslationUsage ? "Zoom usage" : "Estimated usage";
+    public string ActualScribeCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.ScribeUsd);
+    [JsonIgnore]
+    public string ActualTranslateCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.TranslateUsd);
+    [JsonIgnore]
+    public string ActualSummaryCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.SummarizeUsd);
+    [JsonIgnore]
+    public string ActualTotalCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.TotalUsd);
+    [JsonIgnore]
+    public string EstimateQualityLabel => TranscriptCharacters > 0 ? "Estimate" : "Rough";
 
     public void ConfigureCostEstimate(UserSettings settings)
     {
@@ -165,7 +197,7 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanEnd));
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(CanRemove));
-        OnPropertyChanged(nameof(CostBasisLabel));
+        NotifyCostChanged();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -180,12 +212,16 @@ public sealed class QueueJob : INotifyPropertyChanged
 
     private void NotifyCostChanged()
     {
-        OnPropertyChanged(nameof(CostEstimate));
+        OnPropertyChanged(nameof(CostComparison));
         OnPropertyChanged(nameof(EstimatedScribeCostLabel));
         OnPropertyChanged(nameof(EstimatedTranslateCostLabel));
+        OnPropertyChanged(nameof(EstimatedSummaryCostLabel));
         OnPropertyChanged(nameof(EstimatedTotalCostLabel));
-        OnPropertyChanged(nameof(CostBasisLabel));
-        OnPropertyChanged(nameof(TranslationCostBasisLabel));
+        OnPropertyChanged(nameof(ActualScribeCostLabel));
+        OnPropertyChanged(nameof(ActualTranslateCostLabel));
+        OnPropertyChanged(nameof(ActualSummaryCostLabel));
+        OnPropertyChanged(nameof(ActualTotalCostLabel));
+        OnPropertyChanged(nameof(EstimateQualityLabel));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
