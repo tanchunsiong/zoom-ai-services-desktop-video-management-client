@@ -32,7 +32,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" Fill="#2DD4A7" Margin="0,0,8,0"/>
-                    <TextBlock Text="Audio-only upload · optional 2× atempo" Foreground="{StaticResource TextMuted}"/>
+                    <TextBlock Text="Audio-only upload · original audio" Foreground="{StaticResource TextMuted}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -53,7 +53,7 @@
                         </StackPanel>
                     </Grid>
                     <Border Grid.Row="1" Margin="0,20,0,14" Padding="14" Background="#18243A" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8">
-                        <TextBlock Text="Normal mode copies the original audio stream. Optional 2× mode uses FFmpeg atempo=2.0 and 320 kbps MP3; VTT timestamps are expanded back to the original video timeline." Foreground="#C5D0E4"/>
+                        <TextBlock Text="FFmpeg copies the first audio stream into a Zoom-supported container. Video is never uploaded, and audio is not resampled or recompressed." Foreground="#C5D0E4"/>
                     </Border>
                     <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}"
                               IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
@@ -97,17 +97,6 @@
                                                   SelectedValue="{Binding Summarize, Mode=OneWay}"
                                                   IsEnabled="{Binding CanConfigureLanguages}"
                                                   SelectionChanged="JobSummary_SelectionChanged"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="2× audio" Width="95">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox Margin="12,4" Content="atempo"
-                                                  IsChecked="{Binding UseDoubleSpeed, Mode=OneWay}"
-                                                  IsEnabled="{Binding CanConfigureSourceLanguage}"
-                                                  ToolTip="Uses FFmpeg atempo=2.0 and restores captions to the original video timeline."
-                                                  Click="JobDoubleSpeed_Click"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

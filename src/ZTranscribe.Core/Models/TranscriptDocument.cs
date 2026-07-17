@@ -2,10 +2,10 @@ namespace ZTranscribe.Core.Models;
 
 public sealed record TranscriptCue(int Index, TimeSpan Start, TimeSpan End, string Text)
 {
-    public TranscriptCue MapToTimeline(TimeSpan offset, double timeScale = 1) => this with
+    public TranscriptCue OffsetBy(TimeSpan offset) => this with
     {
-        Start = TimeSpan.FromSeconds(Start.TotalSeconds * timeScale) + offset,
-        End = TimeSpan.FromSeconds(End.TotalSeconds * timeScale) + offset
+        Start = Start + offset,
+        End = End + offset
     };
 }
 
@@ -35,8 +35,7 @@ public sealed record PreparedAudioPart(
     string Path,
     TimeSpan TimelineStart,
     TimeSpan Duration,
-    string MimeType,
-    double TranscriptTimeScale);
+    string MimeType);
 
 public sealed record MediaProbe(
     TimeSpan Duration,
@@ -67,3 +66,4 @@ public sealed class UserSettings
     public decimal SummarizerUsdPerMillionCharacters { get; set; } = DefaultSummarizerUsdPerMillionCharacters;
     public int EstimatedTranslationCharactersPerMinute { get; set; }
 }
+

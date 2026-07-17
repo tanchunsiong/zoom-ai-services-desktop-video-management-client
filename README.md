@@ -9,13 +9,12 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
-- FFmpeg/FFprobe integration with two per-job modes: original stream copy, or optional `atempo=2.0` processing encoded as 320 kbps MP3.
+- FFmpeg/FFprobe integration that selects the first audio stream with `-vn -c:a copy`. It does **not** alter speed, resample, remix, or recompress audio.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Original and translated `.vtt` files plus transcript JSON.
 - Optional row-level Zoom Summarizer output, saved as `summary.md` and shown in the Review panel.
 - Embedded LibVLCSharp player with software-decoded video, captions below the player, and a seekable caption timeline.
 - Separate per-job and all-jobs `Estimate` and `Actual` cost columns, itemized for Scribe, Translator, and Summarizer. Pre-transcript character estimates are language-aware; completed jobs use measured Zoom API usage for Translator and Summarizer.
-- Original-timeline VTT restoration for accelerated jobs: Scribe cue times are multiplied by two before the part's source offset is applied.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
 - Windows GitHub Actions build and downloadable `win-x64` workflow artifact.
 
@@ -40,8 +39,6 @@ Compilation is validated locally and by the repository's Windows GitHub Actions 
 
 ## Audio integrity
 
-The checkbox is off by default. In normal mode:
-
 Supported stream-copy mappings are:
 
 | Input audio codec | Upload container | Result |
@@ -51,8 +48,6 @@ Supported stream-copy mappings are:
 | PCM | WAV | copied unchanged |
 
 If the source codec cannot be placed in Zoom's WAV/M4A/MP3 inputs without transcoding, the job fails with an explicit message. This is deliberate: the app never silently degrades or changes customer audio.
-
-When the row's **2× audio / atempo** checkbox is selected, FFmpeg decodes the selected audio stream, applies `atempo=2.0`, and encodes a 320 kbps MP3 with `libmp3lame`. Sources with more than two channels are downmixed to stereo because MP3 supports at most two channels. This mode is not bit-for-bit lossless—the checkbox explicitly opts into re-encoding—but the high bitrate minimizes compression artifacts. Each queue item persists its own choice.
 
 Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work` and is removed in a `finally` block after success, failure, or cancellation. Final outputs default to a `Z Transcribe Outputs` folder beside the source file.
 
@@ -79,3 +74,4 @@ redistribution considerations.
 - Dollar estimates depend on the usage rates configured for your Zoom Build account and may differ from the final invoice.
 - The app uses the first audio stream. Multi-track selection is a planned enhancement.
 - The FFmpeg binaries are not redistributed in this repository.
+

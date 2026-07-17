@@ -274,34 +274,6 @@ await CheckAsync("Canceled child process is terminated", async () =>
     }
 });
 
-Check("2x transcript timestamps map back to the original timeline", () =>
-{
-    var acceleratedCue = new TranscriptCue(1, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), "Mapped");
-    var mapped = acceleratedCue.MapToTimeline(TimeSpan.FromMinutes(15), 2);
-    return mapped.Start == TimeSpan.FromMinutes(15) + TimeSpan.FromSeconds(6)
-           && mapped.End == TimeSpan.FromMinutes(15) + TimeSpan.FromSeconds(10);
-});
-
-Check("2x FFmpeg plan uses atempo and 320k MP3 encoding", () =>
-{
-    var arguments = FfmpegAudioExtractor.BuildArguments(
-        "input.mp4", "output.mp3", TimeSpan.Zero, TimeSpan.FromMinutes(15), true, 6);
-    return ContainsPair(arguments, "-filter:a", "atempo=2.0")
-           && ContainsPair(arguments, "-c:a", "libmp3lame")
-           && ContainsPair(arguments, "-b:a", "320k")
-           && ContainsPair(arguments, "-ac", "2")
-           && !ContainsPair(arguments, "-c:a", "copy");
-});
-
-Check("2x jobs estimate half the Scribe duration", () =>
-{
-    var settings = new UserSettings { ScribeUsdPerMinute = 1m };
-    var normal = new QueueJob { SourcePath = "normal.mp4", DurationSeconds = 120 };
-    var accelerated = new QueueJob { SourcePath = "accelerated.mp4", DurationSeconds = 120, UseDoubleSpeed = true };
-    return JobCostEstimator.Compare(normal, settings).Estimate.ScribeUsd == 2m
-           && JobCostEstimator.Compare(accelerated, settings).Estimate.ScribeUsd == 1m;
-});
-
 if (failures.Count > 0)
 {
     Console.Error.WriteLine(string.Join(Environment.NewLine, failures));
@@ -322,6 +294,7 @@ void Check(string name, Func<bool> assertion)
         failures.Add($"FAIL: {name}: {exception.Message}");
     }
 }
+
 async Task CheckAsync(string name, Func<Task<bool>> assertion)
 {
     try
@@ -344,9 +317,3 @@ string DotnetHostPath()
     return Path.Combine(dotnetRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
 }
 
-bool ContainsPair(IReadOnlyList<string> values, string key, string value)
-{
-    for (var index = 0; index + 1 < values.Count; index++)
-        if (values[index] == key && values[index + 1] == value) return true;
-    return false;
-}

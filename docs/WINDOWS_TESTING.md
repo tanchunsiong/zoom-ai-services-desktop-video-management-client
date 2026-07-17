@@ -11,7 +11,6 @@
 7. Close the app with queued jobs, reopen, and verify persistence.
 8. Cancel an active job and verify its temporary work directory is removed.
 9. Double-click a Ready job, switch original/translated captions, and seek by double-clicking cues.
-10. Process the same clip once normally, remove/re-add it with 2× enabled, and process it again. Confirm FFmpeg uses `atempo=2.0`, the accelerated upload is approximately half the duration, and both VTT files align to the same points in the original video.
 
 ## Long media
 
@@ -27,3 +26,4 @@
 - Invalid credentials / missing AI Services entitlement.
 - HTTP 429 and transient 5xx responses.
 - Read-only output directory, source removed after queuing, and network loss mid-upload.
+
