@@ -56,14 +56,13 @@
                         <TextBlock Text="FFmpeg copies the first audio stream into a Zoom-supported container. Video is never uploaded, and audio is not resampled or recompressed." Foreground="#C5D0E4"/>
                     </Border>
                     <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}"
-                              IsReadOnly="True" SelectionMode="Single" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
+                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
                               PreviewMouseRightButtonDown="JobsGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Review" Click="ReviewJobMenuItem_Click"
                                           Visibility="{Binding PlacementTarget.SelectedItem.CanReview, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibility}}"/>
-                                <MenuItem Header="Remove" Click="RemoveJobMenuItem_Click"
-                                          IsEnabled="{Binding PlacementTarget.SelectedItem.CanRemove, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                <MenuItem Header="Remove selected" Click="RemoveJobMenuItem_Click"/>
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
@@ -367,18 +366,18 @@
                 <StackPanel Grid.Column="1" VerticalAlignment="Center"
                             ToolTip="Estimated and measured USD using the rates in Settings. Text services use input plus output characters.">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Estimate" Foreground="{StaticResource TextMuted}" Margin="0,0,12,0"/>
-                        <TextBlock Text="{Binding EstimatedQueueScribeCostLabel, StringFormat=Scribe  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding EstimatedQueueTranslateCostLabel, StringFormat=Translate  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding EstimatedQueueSummaryCostLabel, StringFormat=Summary  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding EstimatedQueueTotalCostLabel, StringFormat=Total  {0}}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Grand estimate" Foreground="#AFA7FF" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueScribeCostLabel, StringFormat=Scribe  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueTranslateCostLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueSummaryCostLabel, StringFormat=Summary  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueTotalCostLabel, StringFormat=Total  {0}}" Foreground="#FFFFFF" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                        <TextBlock Text="Actual" Foreground="#58D6A8" Margin="0,0,20,0"/>
-                        <TextBlock Text="{Binding ActualQueueScribeCostLabel, StringFormat=Scribe  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding ActualQueueTranslateCostLabel, StringFormat=Translate  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding ActualQueueSummaryCostLabel, StringFormat=Summary  {0}}" Margin="0,0,14,0"/>
-                        <TextBlock Text="{Binding ActualQueueTotalCostLabel, StringFormat=Total  {0}}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Grand actual" Foreground="#58D6A8" FontWeight="SemiBold" Margin="0,0,20,0"/>
+                        <TextBlock Text="{Binding ActualQueueScribeCostLabel, StringFormat=Scribe  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueTranslateCostLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueSummaryCostLabel, StringFormat=Summary  {0}}" Foreground="{StaticResource TextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueTotalCostLabel, StringFormat=Total  {0}}" Foreground="#FFFFFF" FontWeight="Bold"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>

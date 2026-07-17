@@ -192,9 +192,27 @@ public partial class MainWindow : Window
     }
 
     private async void RemoveJobMenuItem_Click(object sender, RoutedEventArgs e)
+        => await RemoveSelectedJobsAsync();
+
+    private async Task RemoveSelectedJobsAsync()
     {
-        if (ViewModel.SelectedJob is not { } job) return;
-        try { await ViewModel.Queue.RemoveAsync(job); }
+        var jobs = JobsGrid.SelectedItems.OfType<QueueJob>().ToArray();
+        if (jobs.Length == 0 && ViewModel.SelectedJob is { } selected) jobs = [selected];
+        if (jobs.Length == 0) return;
+
+        if (jobs.Length > 1 && MessageBox.Show(
+                this,
+                $"Remove {jobs.Length} selected jobs from the queue?\n\nMedia files and generated outputs will not be deleted.",
+                "Remove selected jobs",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            var removed = await ViewModel.RemoveJobsAsync(jobs);
+            ViewModel.Notice = $"Removed {removed} job{(removed == 1 ? "" : "s")} from the queue";
+        }
         catch (Exception exception) { ShowError(exception); }
     }
 
@@ -204,7 +222,15 @@ public partial class MainWindow : Window
     private void JobsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (ItemsControl.ContainerFromElement(JobsGrid, e.OriginalSource as DependencyObject) is DataGridRow row)
-            JobsGrid.SelectedItem = row.Item;
+        {
+            if (!row.IsSelected)
+            {
+                JobsGrid.SelectedItems.Clear();
+                row.IsSelected = true;
+            }
+            JobsGrid.CurrentItem = row.Item;
+            row.Focus();
+        }
     }
 
     private void OpenOutput_Click(object sender, RoutedEventArgs e)

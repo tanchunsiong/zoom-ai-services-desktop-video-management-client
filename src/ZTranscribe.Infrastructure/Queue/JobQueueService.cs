@@ -250,12 +250,17 @@ public sealed class JobQueueService(
         }
     }
 
-    public async Task RemoveAsync(QueueJob job)
+    public Task RemoveAsync(QueueJob job) => RemoveManyAsync([job]);
+
+    public async Task<int> RemoveManyAsync(IEnumerable<QueueJob> jobs)
     {
-        if (job.CanEnd)
+        var selected = jobs.Distinct().Where(Jobs.Contains).ToArray();
+        if (selected.Any(job => job.CanEnd))
             throw new InvalidOperationException("Cancel the active job before removing it.");
-        Jobs.Remove(job);
+        foreach (var job in selected) Jobs.Remove(job);
+        if (selected.Length == 0) return 0;
         await SaveAsync();
+        return selected.Length;
     }
 
     public Task StartAsync() => RunJobsAsync(Jobs.Where(x => x.State == JobState.Queued).ToArray());

@@ -89,7 +89,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string EstimatedQueueScribeCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostComparison.Estimate.ScribeUsd));
     public string EstimatedQueueTranslateCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostComparison.Estimate.TranslateUsd));
     public string EstimatedQueueSummaryCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostComparison.Estimate.SummarizeUsd));
-    public string EstimatedQueueTotalCostLabel => FormatAggregateCost(Jobs.Select(job => job.CostComparison.Estimate.TotalUsd));
+    public string EstimatedQueueTotalCostLabel => FormatAggregateCost(Jobs.SelectMany(job =>
+    {
+        var estimate = job.CostComparison.Estimate;
+        return new[] { estimate.ScribeUsd, estimate.TranslateUsd, estimate.SummarizeUsd };
+    }));
     public string ActualQueueScribeCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.ScribeUsd));
     public string ActualQueueTranslateCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TranslateUsd));
     public string ActualQueueSummaryCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.SummarizeUsd));
@@ -165,6 +169,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         RaiseQueueCostProperties();
         Notice = "Settings saved securely";
         OnPropertyChanged(nameof(ApiKey));
+    }
+
+    public async Task<int> RemoveJobsAsync(IReadOnlyCollection<QueueJob> jobs)
+    {
+        _isInitializing = true;
+        try
+        {
+            var removed = await Queue.RemoveManyAsync(jobs);
+            if (SelectedJob is not null && jobs.Contains(SelectedJob)) SelectedJob = null;
+            return removed;
+        }
+        finally
+        {
+            _isInitializing = false;
+            RaiseQueueCostProperties();
+        }
     }
 
     public async Task OpenForReviewAsync(QueueJob job, bool translated)
