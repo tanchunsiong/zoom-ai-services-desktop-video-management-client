@@ -23,6 +23,8 @@ public sealed record JobCostComparison(
 
 public static class JobCostEstimator
 {
+    private const decimal SummaryEstimateContingency = 1.10m;
+
     public static JobCostComparison Compare(QueueJob job, UserSettings settings)
     {
         var estimatedScribe = ScribeCost(job, settings);
@@ -100,7 +102,9 @@ public static class JobCostEstimator
     private static long EstimateSummaryCharacters(QueueJob job, UserSettings settings)
     {
         var inputCharacters = EstimateSourceCharacters(job, settings);
-        return inputCharacters <= 0 ? 0 : checked(inputCharacters + (long)Math.Ceiling(inputCharacters * 0.1m));
+        if (inputCharacters <= 0) return 0;
+        var expectedUsage = checked(inputCharacters + (long)Math.Ceiling(inputCharacters * 0.1m));
+        return checked((long)Math.Ceiling(expectedUsage * SummaryEstimateContingency));
     }
 
     private static long EstimateSourceCharacters(QueueJob job, UserSettings settings)

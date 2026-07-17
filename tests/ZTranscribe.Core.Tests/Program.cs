@@ -181,9 +181,9 @@ Check("Summarizer estimate and actual use separate character totals", () =>
         CompletedAt = DateTimeOffset.UtcNow
     };
     var comparison = JobCostEstimator.Compare(job, settings);
-    return comparison.EstimatedSummaryCharacters == 11_000
+    return comparison.EstimatedSummaryCharacters == 12_100
         && comparison.ActualSummaryCharacters == 11_000
-        && comparison.Estimate.SummarizeUsd == 0.0044m
+        && comparison.Estimate.SummarizeUsd == 0.00484m
         && comparison.Actual.SummarizeUsd == 0.0044m;
 });
 
@@ -236,8 +236,8 @@ Check("Summarizer pre-transcript estimate is derived from media duration", () =>
         Summarize = true
     };
     var comparison = JobCostEstimator.Compare(job, new UserSettings());
-    return comparison.EstimatedSummaryCharacters == 880
-        && comparison.Estimate.SummarizeUsd == 0.000352m;
+    return comparison.EstimatedSummaryCharacters == 968
+        && comparison.Estimate.SummarizeUsd == 0.0003872m;
 });
 
 Check("FFprobe keeps video duration when no audio stream exists", () =>
