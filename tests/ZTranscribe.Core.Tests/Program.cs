@@ -226,6 +226,19 @@ Check("FFprobe accepts numeric and string fields", () =>
         && probe.Duration == TimeSpan.FromSeconds(123.5);
 });
 
+Check("Summarizer pre-transcript estimate is derived from media duration", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        DurationSeconds = 60,
+        Summarize = true
+    };
+    var comparison = JobCostEstimator.Compare(job, new UserSettings());
+    return comparison.EstimatedSummaryCharacters == 880
+        && comparison.Estimate.SummarizeUsd == 0.000352m;
+});
+
 Check("FFprobe keeps video duration when no audio stream exists", () =>
 {
     var probe = FfmpegAudioExtractor.ParseProbe("""

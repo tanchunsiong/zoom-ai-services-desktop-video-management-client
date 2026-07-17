@@ -41,7 +41,8 @@ public sealed class JobQueueService(
             {
                 SourcePath = full,
                 SourceLanguage = sourceLanguage,
-                TranslationLanguage = translationLanguage ?? ""
+                TranslationLanguage = translationLanguage ?? "",
+                Summarize = true
             };
             Jobs.Add(job);
             added.Add(job);

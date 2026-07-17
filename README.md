@@ -12,7 +12,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - FFmpeg/FFprobe integration that selects the first audio stream with `-vn -c:a copy`. It does **not** alter speed, resample, remix, or recompress audio.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Original and translated `.vtt` files plus transcript JSON.
-- Optional row-level Zoom Summarizer output, saved as `summary.md` and shown in the Review panel.
+- Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as `summary.md`, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density.
 - Embedded LibVLCSharp player with software-decoded video, captions below the player, and a seekable caption timeline.
 - Separate per-job and all-jobs `Estimate` and `Actual` cost columns, itemized for Scribe, Translator, and Summarizer. Pre-transcript character estimates are language-aware; completed jobs use measured Zoom API usage for Translator and Summarizer.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
