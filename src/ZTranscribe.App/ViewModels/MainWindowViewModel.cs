@@ -221,9 +221,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         var values = costs.ToArray();
         if (values.Length == 0) return JobCostEstimator.FormatUsd(0m);
-        return values.Any(value => value is null)
-            ? "--"
-            : JobCostEstimator.FormatUsd(values.Sum(value => value!.Value));
+        var known = values.Where(value => value is not null).Select(value => value!.Value).ToArray();
+        if (known.Length == 0) return "--";
+        var subtotal = JobCostEstimator.FormatUsd(known.Sum());
+        return known.Length == values.Length ? subtotal : $"{subtotal}+";
     }
 
     private static string FormatKnownCost(IEnumerable<decimal?> costs)
