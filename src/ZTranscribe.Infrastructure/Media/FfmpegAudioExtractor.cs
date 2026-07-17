@@ -9,7 +9,7 @@ namespace ZTranscribe.Infrastructure.Media;
 public sealed partial class FfmpegAudioExtractor : IAudioExtractor
 {
     private const long ZoomPartLimitBytes = 100L * 1024L * 1024L;
-    private const long PcmPartTargetBytes = 95L * 1024L * 1024L;
+    private const long PcmPartTargetBytes = 90_000_000L;
     internal sealed record AudioProfile(string Extension, string MimeType, string OutputCodec, bool StreamCopy);
 
     public async Task<MediaProbe> ProbeAsync(string inputPath, UserSettings settings, CancellationToken cancellationToken)

@@ -9,7 +9,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
-- FFmpeg/FFprobe integration that selects the first audio stream. Zoom-compatible codecs use `-vn -c:a copy`; incompatible codecs such as WMA are decoded to PCM WAV without resampling, channel remixing, or additional lossy compression.
+- FFmpeg/FFprobe integration that selects the first audio stream. Zoom-compatible codecs use `-vn -c:a copy`; every other FFmpeg-decodable codec, including AC3 and WMA, is decoded to PCM WAV without resampling, channel remixing, or additional lossy compression.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Original and translated `.vtt` files plus transcript JSON.
 - Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as `summary.md`, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density.
@@ -46,9 +46,9 @@ Supported stream-copy mappings are:
 | AAC / ALAC | M4A | copied unchanged |
 | MP3 | MP3 | copied unchanged |
 | PCM | WAV | copied unchanged |
-| Other codecs, including WMA | WAV | decoded to 16-bit PCM without resampling or remixing |
+| Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM without resampling or remixing |
 
-PCM fallback segments are shortened automatically when necessary to remain below Zoom's 100 MB request limit. This changes the storage encoding but does not apply another lossy codec, resample the waveform, or alter the channel layout.
+PCM fallback segments are shortened automatically to a conservative 90 MB target when necessary to remain below Zoom's 100 MB request limit, including high-channel-count audio. This changes the storage encoding but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 
 Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work` and is removed in a `finally` block after success, failure, or cancellation. Final outputs default to a `Z Transcribe Outputs` folder beside the source file.
 

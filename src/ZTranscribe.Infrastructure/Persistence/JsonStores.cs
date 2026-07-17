@@ -52,10 +52,23 @@ public sealed class JsonQueueStore(AppPaths paths) : IQueueStore
         foreach (var job in jobs)
         {
             if (job.TranslationLanguage == job.SourceLanguage) job.TranslationLanguage = "";
+            if (job.State == JobState.Failed)
+                job.Error = UpgradeLegacyCodecError(job.Error);
             if (job.State is JobState.Preparing or JobState.Transcribing or JobState.Translating or JobState.Summarizing)
                 job.Report(JobState.Queued, 0, "Recovered after the application closed");
         }
         return jobs;
+    }
+
+    internal static string? UpgradeLegacyCodecError(string? error)
+    {
+        if (error is null ||
+            !error.StartsWith("Audio codec '", StringComparison.Ordinal) ||
+            !error.Contains("cannot be placed in WAV, M4A, or MP3", StringComparison.Ordinal))
+            return error;
+
+        return "This job failed under the previous audio compatibility policy. " +
+               "Retry it to convert the audio to Zoom-compatible PCM WAV.";
     }
 
     public async Task SaveAsync(IEnumerable<QueueJob> jobs, CancellationToken cancellationToken = default)

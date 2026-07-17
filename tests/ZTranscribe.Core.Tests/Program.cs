@@ -2,6 +2,7 @@ using System.Diagnostics;
 using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
 using ZTranscribe.Infrastructure.Media;
+using ZTranscribe.Infrastructure.Persistence;
 
 if (args is ["--wait-for-cancellation", var markerPath])
 {
@@ -271,13 +272,34 @@ Check("WMA uses PCM WAV compatibility extraction", () =>
         && !arguments.Contains("-ac");
 });
 
+Check("AC3 and arbitrary decodable codecs use PCM WAV compatibility extraction", () =>
+{
+    var ac3 = FfmpegAudioExtractor.ProfileFor("ac3");
+    var unknown = FfmpegAudioExtractor.ProfileFor("future_codec");
+    return ac3 == unknown
+        && ac3.Extension == "wav"
+        && ac3.MimeType == "audio/wav"
+        && ac3.OutputCodec == "pcm_s16le"
+        && !ac3.StreamCopy;
+});
+
 Check("PCM compatibility segments stay below the Zoom part limit", () =>
 {
     var probe = new MediaProbe(TimeSpan.FromHours(1), "wmav2", 48_000, 2, 128_000, true);
     var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
     var estimatedBytes = segment.TotalSeconds * probe.SampleRate * probe.Channels * 2;
-    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 95L * 1024L * 1024L;
+    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 90_000_000L;
+});
+
+Check("Legacy codec failures direct the user to retry", () =>
+{
+    const string legacy = "Audio codec 'ac3' cannot be placed in WAV, M4A, or MP3 without changing the audio.";
+    var upgraded = JsonQueueStore.UpgradeLegacyCodecError(legacy);
+    return upgraded is not null
+        && upgraded.Contains("previous audio compatibility policy", StringComparison.Ordinal)
+        && upgraded.Contains("Retry", StringComparison.Ordinal)
+        && JsonQueueStore.UpgradeLegacyCodecError("another failure") == "another failure";
 });
 
 await CheckAsync("Canceled child process is terminated", async () =>
