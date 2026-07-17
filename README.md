@@ -48,9 +48,9 @@ Supported stream-copy mappings are:
 | PCM | WAV | copied unchanged |
 | Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM without resampling or remixing |
 
-PCM fallback segments are shortened automatically to a conservative 90 MB target when necessary to remain below Zoom's 100 MB request limit, including high-channel-count audio. This changes the storage encoding but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
+Audio segments use a conservative 40 MB target to leave headroom below Zoom's documented 100 MB request limit and observed multipart gateway limits, including high-channel-count PCM audio. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 
-Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work` and is removed in a `finally` block after success, failure, or cancellation. Final outputs default to a `Z Transcribe Outputs` folder beside the source file.
+Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is deleted immediately after its Scribe call succeeds or fails, and the job work directory is removed with retries after success, failure, or cancellation. Final outputs default to a `Z Transcribe Outputs` folder beside the source file.
 
 ## Repository map
 

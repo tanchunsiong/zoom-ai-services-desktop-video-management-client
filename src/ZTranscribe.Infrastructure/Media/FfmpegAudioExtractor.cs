@@ -9,7 +9,7 @@ namespace ZTranscribe.Infrastructure.Media;
 public sealed partial class FfmpegAudioExtractor : IAudioExtractor
 {
     private const long ZoomPartLimitBytes = 100L * 1024L * 1024L;
-    private const long PcmPartTargetBytes = 90_000_000L;
+    private const long UploadPartTargetBytes = 40_000_000L;
     internal sealed record AudioProfile(string Extension, string MimeType, string OutputCodec, bool StreamCopy);
 
     public async Task<MediaProbe> ProbeAsync(string inputPath, UserSettings settings, CancellationToken cancellationToken)
@@ -95,11 +95,19 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         AudioProfile profile,
         TimeSpan requested)
     {
-        if (profile.StreamCopy) return requested;
-        var sampleRate = probe.SampleRate > 0 ? probe.SampleRate : 48_000;
-        var channels = probe.Channels > 0 ? probe.Channels : 2;
-        var pcmBytesPerSecond = checked((long)sampleRate * channels * 2L);
-        var maximumSeconds = Math.Max(1, PcmPartTargetBytes / pcmBytesPerSecond);
+        long bytesPerSecond;
+        if (profile.StreamCopy)
+        {
+            if (probe.BitRate is not > 0) return requested;
+            bytesPerSecond = Math.Max(1, probe.BitRate.Value / 8);
+        }
+        else
+        {
+            var sampleRate = probe.SampleRate > 0 ? probe.SampleRate : 48_000;
+            var channels = probe.Channels > 0 ? probe.Channels : 2;
+            bytesPerSecond = checked((long)sampleRate * channels * 2L);
+        }
+        var maximumSeconds = Math.Max(1, UploadPartTargetBytes / bytesPerSecond);
         return TimeSpan.FromSeconds(Math.Min(requested.TotalSeconds, maximumSeconds));
     }
 

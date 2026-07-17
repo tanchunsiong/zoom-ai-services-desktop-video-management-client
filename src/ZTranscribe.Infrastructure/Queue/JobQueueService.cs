@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
+using ZTranscribe.Infrastructure.Media;
 using ZTranscribe.Infrastructure.Persistence;
 
 namespace ZTranscribe.Infrastructure.Queue;
@@ -376,7 +377,11 @@ public sealed class JobQueueService(
                         job.Progress = 22 + (int)Math.Round(done / (double)parts.Count * 53);
                         job.StatusMessage = $"Transcribed {done} of {parts.Count} parts";
                     }
-                    finally { gate.Release(); }
+                    finally
+                    {
+                        gate.Release();
+                        await WorkFileCleaner.DeleteFileAsync(part.Path);
+                    }
                 }));
             }
 
@@ -442,7 +447,12 @@ public sealed class JobQueueService(
         }
         finally
         {
-            try { if (Directory.Exists(work)) Directory.Delete(work, true); } catch { /* next launch cleanup */ }
+            var cleaned = await WorkFileCleaner.DeleteDirectoryAsync(work);
+            if (!cleaned)
+            {
+                const string cleanupError = "Temporary audio cleanup failed. Close applications using the files and restart Z Transcribe to retry cleanup.";
+                job.Error = string.IsNullOrWhiteSpace(job.Error) ? cleanupError : $"{job.Error}{Environment.NewLine}{cleanupError}";
+            }
             await SaveAsync();
         }
     }

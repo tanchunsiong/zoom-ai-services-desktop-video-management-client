@@ -289,7 +289,27 @@ Check("PCM compatibility segments stay below the Zoom part limit", () =>
     var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
     var estimatedBytes = segment.TotalSeconds * probe.SampleRate * probe.Channels * 2;
-    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 90_000_000L;
+    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 40_000_000L;
+});
+
+Check("Stream-copy segments also target the conservative upload size", () =>
+{
+    var probe = new MediaProbe(TimeSpan.FromHours(1), "mp3", 48_000, 2, 512_000, false);
+    var profile = FfmpegAudioExtractor.ProfileFor("mp3");
+    var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
+    return segment < TimeSpan.FromMinutes(15)
+        && segment.TotalSeconds * probe.BitRate / 8 <= 40_000_000L;
+});
+
+await CheckAsync("Temporary audio is deleted after an upload outcome", async () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-cleanup-{Guid.NewGuid():N}");
+    var file = Path.Combine(directory, "audio.wav");
+    Directory.CreateDirectory(directory);
+    await File.WriteAllTextAsync(file, "temporary audio");
+    var fileDeleted = await WorkFileCleaner.DeleteFileAsync(file);
+    var directoryDeleted = await WorkFileCleaner.DeleteDirectoryAsync(directory);
+    return fileDeleted && directoryDeleted && !File.Exists(file) && !Directory.Exists(directory);
 });
 
 Check("Legacy codec failures direct the user to retry", () =>

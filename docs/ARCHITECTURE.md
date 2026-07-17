@@ -20,13 +20,13 @@ WPF shell
 1. Probe source with ffprobe and reject files without an audio stream.
 2. Map a compatible source codec to a Zoom-supported container, or select PCM WAV fallback for every other FFmpeg-decodable codec.
 3. Extract time-bounded audio-only parts using stream copy where possible; incompatible codecs, including AC3 and WMA, are decoded to PCM without resampling or remixing.
-4. Reject any part above Zoom Scribe's request size limit.
+4. Target 40 MB parts using exact PCM byte rate or the probed compressed bitrate, leaving headroom below Zoom Scribe's documented limit and observed gateway behavior.
 5. Send up to the configured number of parts concurrently.
 6. Offset each returned segment by its part start, sort, and renumber.
 7. Write original WebVTT and transcript JSON.
 8. If requested, translate cue batches while retaining marker-to-timestamp mapping. Bridge non-English pairs through English.
 9. Write translated WebVTT.
-10. Delete the work directory regardless of outcome and persist the final queue state.
+10. Delete each temporary audio part after its API call regardless of outcome, then remove the work directory with retries and persist the final queue state.
 
 ## Failure boundaries
 
