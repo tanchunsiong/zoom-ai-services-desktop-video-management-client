@@ -44,7 +44,7 @@ public partial class MainWindow : Window
             Multiselect = true,
             Filter = "Media files|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.mpg;*.mpeg;*.mod;*.3gp;*.3g2;*.mts;*.m2ts;*.ts;*.flv;*.vob;*.asf;*.wav;*.m4a;*.mp3;*.wma;*.aac;*.flac;*.ogg;*.opus;*.aiff;*.aif|All files|*.*"
         };
-        if (dialog.ShowDialog(this) == true) await AddAsync(dialog.FileNames);
+        if (dialog.ShowDialog(this) == true) await AddAsync(dialog.FileNames, recursive: false);
     }
 
     private async void AddFolder_Click(object sender, RoutedEventArgs e)
@@ -53,19 +53,18 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         var files = Directory.EnumerateFiles(dialog.FolderName, "*", RecursiveEnumeration)
             .Where(x => MediaExtensions.Contains(Path.GetExtension(x)));
-        await AddAsync(files);
+        await AddAsync(files, recursive: true);
     }
 
-    private async Task AddAsync(IEnumerable<string> paths)
+    private async Task AddAsync(IEnumerable<string> paths, bool recursive)
     {
         try
         {
             var files = paths.Where(x => MediaExtensions.Contains(Path.GetExtension(x))).ToArray();
             var added = await ViewModel.AddFilesAsync(files);
-            var duplicates = files.Length - added;
-            ViewModel.Notice = duplicates > 0
-                ? $"Added {added} new media file{(added == 1 ? "" : "s")}; {duplicates} already in the queue"
-                : $"Added {added} media file{(added == 1 ? "" : "s")}";
+            ViewModel.ReportFilesAdded(added);
+            ViewModel.Notice = $"Added {added:N0} media file{(added == 1 ? "" : "s")}" +
+                $"{(recursive ? " recursively" : "")}; {ViewModel.Jobs.Count:N0} jobs in queue";
         }
         catch (Exception exception) { ShowError(exception); }
     }
@@ -306,7 +305,7 @@ public partial class MainWindow : Window
         var files = paths.SelectMany(path => Directory.Exists(path)
             ? Directory.EnumerateFiles(path, "*", RecursiveEnumeration)
             : [path]);
-        await AddAsync(files);
+        await AddAsync(files, recursive: paths.Any(Directory.Exists));
     }
 
     protected override void OnClosed(EventArgs e)

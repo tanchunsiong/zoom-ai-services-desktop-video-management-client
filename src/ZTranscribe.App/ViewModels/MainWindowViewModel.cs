@@ -24,6 +24,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private double _playbackDurationSeconds;
     private string _summaryText = "";
     private bool _isInitializing;
+    private int? _lastAddedCount;
 
     public MainWindowViewModel(
         JobQueueService queue,
@@ -98,6 +99,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ActualQueueTranslateCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TranslateUsd));
     public string ActualQueueSummaryCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.SummarizeUsd));
     public string ActualQueueTotalCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TotalUsd));
+    public string QueueCountLabel => $"{Jobs.Count:N0} jobs in queue";
+    public string LastAddedCountLabel => _lastAddedCount is null ? "" : $"Last added: {_lastAddedCount:N0}";
     public string SummaryText
     {
         get => _summaryText;
@@ -138,7 +141,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiKey));
     }
 
-    public Task<int> AddFilesAsync(IEnumerable<string> files) => Queue.AddAsync(files, "en-US", null);
+    public async Task<int> AddFilesAsync(IEnumerable<string> files)
+    {
+        _isInitializing = true;
+        try { return await Queue.AddAsync(files, "en-US", null); }
+        finally
+        {
+            _isInitializing = false;
+            RaiseQueueCostProperties();
+        }
+    }
 
     public async Task SaveSettingsAsync(string apiKey, string apiSecret)
     {
@@ -185,6 +197,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             _isInitializing = false;
             RaiseQueueCostProperties();
         }
+    }
+
+    public void ReportFilesAdded(int count)
+    {
+        _lastAddedCount = count;
+        OnPropertyChanged(nameof(LastAddedCountLabel));
     }
 
     public async Task OpenForReviewAsync(QueueJob job, bool translated)
@@ -263,6 +281,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 job.ConfigureCostEstimate(Settings);
                 job.PropertyChanged += Job_PropertyChanged;
             }
+        OnPropertyChanged(nameof(QueueCountLabel));
         if (!_isInitializing) RaiseQueueCostProperties();
     }
 

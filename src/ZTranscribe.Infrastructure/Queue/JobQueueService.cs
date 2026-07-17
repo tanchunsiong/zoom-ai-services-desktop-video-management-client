@@ -29,12 +29,10 @@ public sealed class JobQueueService(
 
     public async Task<int> AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
     {
-        var existing = Jobs.Select(x => Path.GetFullPath(x.SourcePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = new List<QueueJob>();
         foreach (var file in files.Where(File.Exists))
         {
             var full = Path.GetFullPath(file);
-            if (!existing.Add(full)) continue;
             var job = new QueueJob
             {
                 SourcePath = full,
