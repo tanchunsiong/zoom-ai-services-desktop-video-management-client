@@ -13,7 +13,17 @@ namespace ZTranscribe.App;
 public partial class MainWindow : Window
 {
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wav", ".m4a", ".mp3" };
+    {
+        ".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".mpg", ".mpeg",
+        ".mod", ".3gp", ".3g2", ".mts", ".m2ts", ".ts", ".flv", ".vob", ".asf",
+        ".wav", ".m4a", ".mp3", ".wma", ".aac", ".flac", ".ogg", ".opus", ".aiff", ".aif"
+    };
+    private static readonly EnumerationOptions RecursiveEnumeration = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,
+        AttributesToSkip = 0
+    };
 
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext;
 
@@ -32,7 +42,7 @@ public partial class MainWindow : Window
         {
             Title = "Add media to Z Transcribe",
             Multiselect = true,
-            Filter = "Media files|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wav;*.m4a;*.mp3|All files|*.*"
+            Filter = "Media files|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.mpg;*.mpeg;*.mod;*.3gp;*.3g2;*.mts;*.m2ts;*.ts;*.flv;*.vob;*.asf;*.wav;*.m4a;*.mp3;*.wma;*.aac;*.flac;*.ogg;*.opus;*.aiff;*.aif|All files|*.*"
         };
         if (dialog.ShowDialog(this) == true) await AddAsync(dialog.FileNames);
     }
@@ -41,7 +51,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFolderDialog { Title = "Add a media folder", Multiselect = false };
         if (dialog.ShowDialog(this) != true) return;
-        var files = Directory.EnumerateFiles(dialog.FolderName, "*", SearchOption.AllDirectories)
+        var files = Directory.EnumerateFiles(dialog.FolderName, "*", RecursiveEnumeration)
             .Where(x => MediaExtensions.Contains(Path.GetExtension(x)));
         await AddAsync(files);
     }
@@ -51,8 +61,11 @@ public partial class MainWindow : Window
         try
         {
             var files = paths.Where(x => MediaExtensions.Contains(Path.GetExtension(x))).ToArray();
-            await ViewModel.AddFilesAsync(files);
-            ViewModel.Notice = $"Added {files.Length} media file{(files.Length == 1 ? "" : "s")}";
+            var added = await ViewModel.AddFilesAsync(files);
+            var duplicates = files.Length - added;
+            ViewModel.Notice = duplicates > 0
+                ? $"Added {added} new media file{(added == 1 ? "" : "s")}; {duplicates} already in the queue"
+                : $"Added {added} media file{(added == 1 ? "" : "s")}";
         }
         catch (Exception exception) { ShowError(exception); }
     }
@@ -303,7 +316,7 @@ public partial class MainWindow : Window
     {
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
         var files = paths.SelectMany(path => Directory.Exists(path)
-            ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+            ? Directory.EnumerateFiles(path, "*", RecursiveEnumeration)
             : [path]);
         await AddAsync(files);
     }

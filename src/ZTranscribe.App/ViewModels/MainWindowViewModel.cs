@@ -138,7 +138,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiKey));
     }
 
-    public Task AddFilesAsync(IEnumerable<string> files) => Queue.AddAsync(files, "en-US", null);
+    public Task<int> AddFilesAsync(IEnumerable<string> files) => Queue.AddAsync(files, "en-US", null);
 
     public async Task SaveSettingsAsync(string apiKey, string apiSecret)
     {

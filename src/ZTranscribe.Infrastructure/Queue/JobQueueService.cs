@@ -27,7 +27,7 @@ public sealed class JobQueueService(
         foreach (var job in await queueStore.LoadAsync(cancellationToken)) Jobs.Add(job);
     }
 
-    public async Task AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
+    public async Task<int> AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
     {
         var existing = Jobs.Select(x => Path.GetFullPath(x.SourcePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = new List<QueueJob>();
@@ -65,6 +65,7 @@ public sealed class JobQueueService(
             }));
         }
         await SaveAsync();
+        return added.Count;
     }
 
     public async Task RetryAsync(QueueJob job)
