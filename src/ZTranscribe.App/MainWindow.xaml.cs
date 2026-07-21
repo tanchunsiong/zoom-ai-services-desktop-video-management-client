@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using ZTranscribe.App.ViewModels;
 using ZTranscribe.Core.Models;
@@ -31,16 +32,90 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        Loaded += (_, _) => ApplyMetroIconography();
+        JobsGrid.ContextMenu.Opened += (_, _) => ApplyContextMenuIconography();
         viewModel.Player.PositionChanged += Player_PositionChanged;
         viewModel.Player.DurationChanged += Player_DurationChanged;
         viewModel.Player.PlaybackFailed += Player_PlaybackFailed;
+    }
+
+    private void ApplyMetroIconography()
+    {
+        foreach (var button in FindVisualChildren<Button>(this))
+        {
+            if (button.Content is not string label) continue;
+            if (label.Contains("Add files", StringComparison.Ordinal))
+            {
+                button.Style = (Style)FindResource("HeaderPrimaryButton");
+                button.Content = IconLabel("\uE710", "Add files");
+            }
+            else if (label == "Preview selected") button.Content = IconLabel("\uE7B3", label);
+            else if (label == "Review selected") button.Content = IconLabel("\uE8A5", label);
+            else if (label == "Translate selected") button.Content = IconLabel("\uE8FA", label);
+            else if (label == "Summarize selected") button.Content = IconLabel("\uE8A5", label);
+            else if (label == "Open output folder") button.Content = IconLabel("\uE8B7", label);
+        }
+
+        foreach (var tab in FindVisualChildren<TabItem>(this))
+        {
+            if (tab.Header is not string header) continue;
+            if (header.Contains("Queue", StringComparison.Ordinal)) tab.Header = IconLabel("\uE8A5", "Queue");
+            else if (header.Contains("Review", StringComparison.Ordinal)) tab.Header = IconLabel("\uE7B3", "Review");
+            else if (header.Contains("Settings", StringComparison.Ordinal)) tab.Header = IconLabel("\uE713", "Settings");
+        }
+
+        ApplyContextMenuIconography();
+    }
+
+    private void ApplyContextMenuIconography()
+    {
+        if (JobsGrid.ContextMenu is not { } menu) return;
+        foreach (var item in menu.Items.OfType<MenuItem>())
+        {
+            if (item.Header is not string label) continue;
+            item.Icon = label switch
+            {
+                "Preview media" => GlyphBlock("\uE7B3"),
+                "Review" => GlyphBlock("\uE8A5"),
+                "Remove selected" => GlyphBlock("\uE738"),
+                _ => item.Icon
+            };
+        }
+    }
+
+    private static StackPanel IconLabel(string glyph, string label) =>
+        new()
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                GlyphBlock(glyph),
+                new TextBlock { Text = label, Margin = new Thickness(8, 0, 0, 0) }
+            }
+        };
+
+    private static TextBlock GlyphBlock(string glyph) => new()
+    {
+        Text = glyph,
+        FontFamily = new FontFamily("Segoe MDL2 Assets"),
+        FontSize = 15,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) yield return match;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            foreach (var child in FindVisualChildren<T>(VisualTreeHelper.GetChild(root, index))) yield return child;
+        }
     }
 
     private async void AddFiles_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Add media to Z Transcribe",
+            Title = "Add media to Z Scribe",
             Multiselect = true,
             Filter = "Media files|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.mpg;*.mpeg;*.mod;*.3gp;*.3g2;*.mts;*.m2ts;*.ts;*.flv;*.vob;*.asf;*.wav;*.m4a;*.mp3;*.wma;*.aac;*.flac;*.ogg;*.opus;*.aiff;*.aif|All files|*.*"
         };
@@ -348,6 +423,6 @@ public partial class MainWindow : Window
     private void ShowError(Exception exception)
     {
         ViewModel.Notice = exception.Message;
-        MessageBox.Show(this, exception.Message, "Z Transcribe", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(this, exception.Message, "Z Scribe", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 }

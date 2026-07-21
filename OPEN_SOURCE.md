@@ -1,6 +1,6 @@
 # Open source
 
-Z Transcribe is open-source software. The project-owned source code is
+Z Scribe is open-source software. The project-owned source code is
 available under the [MIT License](LICENSE), which permits use, modification,
 distribution, and commercial use subject to the license notice and disclaimer.
 
@@ -14,7 +14,7 @@ Zoom credentials, media, transcripts, or other customer data.
 
 ## Third-party software
 
-The MIT License applies to Z Transcribe's project-owned code. Dependencies and
+The MIT License applies to Z Scribe's project-owned code. Dependencies and
 external tools remain under their respective licenses. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before redistributing the app,
 especially for LibVLC and the separately installed FFmpeg build.

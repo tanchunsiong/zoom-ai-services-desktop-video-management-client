@@ -40,7 +40,7 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "Z Transcribe could not start", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(exception.Message, "Z Scribe could not start", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
     }

@@ -1,4 +1,4 @@
-# Z Transcribe Desktop
+# Z Scribe Desktop
 
 A Windows desktop media queue for Zoom AI Services Scribe, Translator, and Summarizer. Add video or audio files, process them in order, and review the resulting captions and summaries alongside the original media in an embedded VLC player.
 
@@ -62,7 +62,7 @@ Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is 
 
 ## Open source and license
 
-Z Transcribe's project-owned source code is released under the [MIT License](LICENSE).
+Z Scribe's project-owned source code is released under the [MIT License](LICENSE).
 See [OPEN_SOURCE.md](OPEN_SOURCE.md) for contribution and security guidance, and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licensing and
 redistribution considerations.
