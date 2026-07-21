@@ -11,8 +11,8 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
 - FFmpeg/FFprobe integration that selects the first audio stream. Zoom-compatible codecs use `-vn -c:a copy`; every other FFmpeg-decodable codec, including AC3 and WMA, is decoded to PCM WAV without resampling, channel remixing, or additional lossy compression.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
-- Original and translated `.vtt` files plus transcript JSON.
-- Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as `summary.md`, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density, then includes a 10% contingency; actual cost continues to use measured API usage.
+- Source-named `.vtt`, translated `.vtt`, transcript JSON, and summary sidecars written directly beside each source file without creating an output folder.
+- Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as a source-named `.summary.md` sidecar, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density, then includes a 10% contingency; actual cost continues to use measured API usage.
 - Embedded LibVLCSharp player with software-decoded video, captions below the player, and a seekable caption timeline.
 - Separate per-job and all-jobs `Estimate` and `Actual` cost columns, itemized for Scribe, Translator, and Summarizer. Pre-transcript character estimates are language-aware; completed jobs use measured Zoom API usage for Translator and Summarizer.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
@@ -50,7 +50,7 @@ Supported stream-copy mappings are:
 
 Audio segments use a conservative 40 MB target to leave headroom below Zoom's documented 100 MB request limit and observed multipart gateway limits, including high-channel-count PCM audio. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 
-Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is deleted immediately after its Scribe call succeeds or fails, and the job work directory is removed with retries after success, failure, or cancellation. Final outputs default to a `Z Transcribe Outputs` folder beside the source file.
+Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is deleted immediately after its Scribe call succeeds or fails, and the job work directory is removed with retries after success, failure, or cancellation. Final outputs are source-named sidecars in the source file's directory, for example `meeting.vtt`, `meeting.translated-zh-CN.vtt`, `meeting.transcript.json`, and `meeting.summary.md`.
 
 ## Repository map
 

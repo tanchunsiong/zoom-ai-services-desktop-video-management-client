@@ -3,6 +3,7 @@ using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
 using ZTranscribe.Infrastructure.Media;
 using ZTranscribe.Infrastructure.Persistence;
+using ZTranscribe.Infrastructure.Queue;
 
 if (args is ["--wait-for-cancellation", var markerPath])
 {
@@ -88,6 +89,17 @@ Check("Queue duration labels use hours minutes and seconds", () =>
     var known = new QueueJob { SourcePath = "sample.mp4", DurationSeconds = 3723 };
     var unknown = new QueueJob { SourcePath = "unknown.mp4" };
     return known.DurationLabel == "01:02:03" && unknown.DurationLabel == "--";
+});
+
+Check("Generated outputs are source-named sidecars", () =>
+{
+    var source = Path.Combine("C:\\media", "meeting.mp4");
+    var paths = JobQueueService.OutputPathsFor(new QueueJob { SourcePath = source });
+    return paths.Directory == Path.GetDirectoryName(source)
+        && paths.OriginalVtt == Path.Combine("C:\\media", "meeting.vtt")
+        && paths.TranscriptJson == Path.Combine("C:\\media", "meeting.transcript.json")
+        && paths.TranslatedVtt("zh-CN") == Path.Combine("C:\\media", "meeting.translated-zh-CN.vtt")
+        && paths.Summary == Path.Combine("C:\\media", "meeting.summary.md");
 });
 
 Check("Japanese pre-transcription translation estimate uses language-aware density", () =>

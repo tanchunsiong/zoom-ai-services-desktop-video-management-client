@@ -58,7 +58,6 @@ public sealed class UserSettings
 
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string FfprobePath { get; set; } = "ffprobe.exe";
-    public string? OutputRoot { get; set; }
     public int ScribeConcurrency { get; set; } = 2;
     public int SegmentMinutes { get; set; } = 15;
     public decimal ScribeUsdPerMinute { get; set; } = DefaultScribeFastUsdPerMinute;

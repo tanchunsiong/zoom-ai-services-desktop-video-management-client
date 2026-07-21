@@ -324,8 +324,6 @@
                                 <TextBox Text="{Binding Settings.FfmpegPath, UpdateSourceTrigger=PropertyChanged}"/>
                                 <TextBlock Text="FFprobe executable" Foreground="{StaticResource TextMuted}" Margin="0,14,0,6"/>
                                 <TextBox Text="{Binding Settings.FfprobePath, UpdateSourceTrigger=PropertyChanged}"/>
-                                <TextBlock Text="Output root (blank creates ‘Z Transcribe Outputs’ beside each source)" Foreground="{StaticResource TextMuted}" Margin="0,14,0,6"/>
-                                <TextBox Text="{Binding Settings.OutputRoot, UpdateSourceTrigger=PropertyChanged}"/>
                                 <Grid Margin="0,14,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
                                     <StackPanel>

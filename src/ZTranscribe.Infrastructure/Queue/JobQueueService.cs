@@ -162,8 +162,7 @@ public sealed class JobQueueService(
                 await SaveAsync();
             }
 
-            var output = Path.GetDirectoryName(job.OriginalVttPath)!;
-            job.TranslatedVttPath = Path.Combine(output, $"translated-{job.TranslationLanguage}.vtt");
+            job.TranslatedVttPath = OutputPathsFor(job).TranslatedVtt(job.TranslationLanguage);
             await File.WriteAllTextAsync(
                 job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
             job.Report(JobState.Ready, 100, "Translated captions are ready to review");
@@ -214,9 +213,8 @@ public sealed class JobQueueService(
                 File.Exists(job.TranslatedVttPath);
             var captionPath = hasTranslatedCaptions ? job.TranslatedVttPath! : job.OriginalVttPath;
             var cues = WebVtt.Parse(await File.ReadAllTextAsync(captionPath, cancellationToken));
-            var output = Path.GetDirectoryName(job.OriginalVttPath)!;
             var language = hasTranslatedCaptions ? job.TranslationLanguage : job.SourceLanguage;
-            await GenerateSummaryAsync(job, cues, language, output, credentials, cancellationToken);
+            await GenerateSummaryAsync(job, cues, language, credentials, cancellationToken);
             job.Report(JobState.Ready, 100, "Summary is ready to review");
         }
         catch (OperationCanceledException)
@@ -395,10 +393,10 @@ public sealed class JobQueueService(
             IReadOnlyList<TranscriptCue> summaryCues = originalCues;
             var summaryLanguage = job.SourceLanguage;
             job.TranscriptCharacters = original.Text.Length;
-            var output = OutputDirectory(job, settings);
-            Directory.CreateDirectory(output);
-            job.OriginalVttPath = Path.Combine(output, "original.vtt");
-            job.TranscriptJsonPath = Path.Combine(output, "transcript.json");
+            var output = OutputPathsFor(job);
+            Directory.CreateDirectory(output.Directory);
+            job.OriginalVttPath = output.OriginalVtt;
+            job.TranscriptJsonPath = output.TranscriptJson;
             await File.WriteAllTextAsync(job.OriginalVttPath, WebVtt.Write(originalCues), cancellationToken);
             await File.WriteAllTextAsync(job.TranscriptJsonPath,
                 JsonSerializer.Serialize(original, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
@@ -419,7 +417,7 @@ public sealed class JobQueueService(
                     job.TranslationOutputCharacters += result.OutputCharacters;
                     await SaveAsync();
                 }
-                job.TranslatedVttPath = Path.Combine(output, $"translated-{job.TranslationLanguage}.vtt");
+                job.TranslatedVttPath = output.TranslatedVtt(job.TranslationLanguage);
                 await File.WriteAllTextAsync(job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
                 summaryCues = translated;
                 summaryLanguage = job.TranslationLanguage;
@@ -428,7 +426,7 @@ public sealed class JobQueueService(
             if (job.Summarize)
             {
                 await GenerateSummaryAsync(
-                    job, summaryCues, summaryLanguage, output, credentials, cancellationToken);
+                    job, summaryCues, summaryLanguage, credentials, cancellationToken);
             }
 
             job.CompletedAt = DateTimeOffset.UtcNow;
@@ -461,7 +459,6 @@ public sealed class JobQueueService(
         QueueJob job,
         IReadOnlyList<TranscriptCue> cues,
         string language,
-        string output,
         ApiCredentials credentials,
         CancellationToken cancellationToken)
     {
@@ -473,19 +470,25 @@ public sealed class JobQueueService(
         var result = await zoom.SummarizeAsync(text, language, credentials, cancellationToken);
         job.SummaryInputCharacters = result.InputCharacters;
         job.SummaryOutputCharacters = result.OutputCharacters;
-        job.SummaryPath = Path.Combine(output, "summary.md");
+        job.SummaryPath = OutputPathsFor(job).Summary;
         await File.WriteAllTextAsync(job.SummaryPath, result.Text, cancellationToken);
         await SaveAsync();
     }
 
-    private static string OutputDirectory(QueueJob job, UserSettings settings)
+    internal static JobOutputPaths OutputPathsFor(QueueJob job)
     {
-        var parent = settings.OutputRoot;
-        if (string.IsNullOrWhiteSpace(parent))
-            parent = Path.Combine(Path.GetDirectoryName(job.SourcePath)!, "Z Transcribe Outputs");
-        var name = string.Concat(Path.GetFileNameWithoutExtension(job.SourcePath)
-            .Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
-        return Path.Combine(parent, name);
+        var directory = Path.GetDirectoryName(job.SourcePath)
+            ?? throw new InvalidOperationException("The source file does not have a parent directory.");
+        return new JobOutputPaths(directory, Path.GetFileNameWithoutExtension(job.SourcePath));
+    }
+
+    internal sealed record JobOutputPaths(string Directory, string Stem)
+    {
+        public string OriginalVtt => Path.Combine(Directory, $"{Stem}.vtt");
+        public string TranscriptJson => Path.Combine(Directory, $"{Stem}.transcript.json");
+        public string Summary => Path.Combine(Directory, $"{Stem}.summary.md");
+        public string TranslatedVtt(string language) =>
+            Path.Combine(Directory, $"{Stem}.translated-{language}.vtt");
     }
 
     private async Task<int> ProbeDurationsAsync(

@@ -41,5 +41,5 @@ WPF shell
 - Non-secret settings: `%LOCALAPPDATA%\Z Transcribe\settings.json`
 - Temporary audio: `%LOCALAPPDATA%\Z Transcribe\work\<job-id>`
 - Credentials: Windows Credential Manager target `ZTranscribe.ZoomBuildCredentials`
-- Outputs: configurable, or `Z Transcribe Outputs\<source-name>` beside source
+- Outputs: source-named sidecar files in the source media directory
 
