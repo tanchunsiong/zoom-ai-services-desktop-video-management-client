@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using ZTranscribe.App.Services;
 using ZTranscribe.Core.Models;
 
@@ -17,13 +18,43 @@ public partial class MediaPreviewWindow : Window
         _job = job;
         InitializeComponent();
         DataContext = this;
-        Title = $"Preview - {job.DisplayName}";
+        Title = $"Z Scribe / Preview - {job.DisplayName}";
         MediaNameText.Text = job.DisplayName;
         MediaPathText.Text = job.SourcePath;
         Player.PositionChanged += Player_PositionChanged;
         Player.DurationChanged += Player_DurationChanged;
         Player.PlaybackFailed += Player_PlaybackFailed;
-        Loaded += (_, _) => Player.Open(_job);
+        Loaded += (_, _) =>
+        {
+            ApplyIconography();
+            Player.Open(_job);
+        };
+    }
+
+    private void ApplyIconography()
+    {
+        foreach (var button in FindVisualChildren<Button>(this))
+        {
+            if (button.ToolTip is not string toolTip || toolTip is not ("Play" or "Pause")) continue;
+            button.Style = (Style)FindResource("IconButton");
+            button.Content = new TextBlock
+            {
+                Text = toolTip == "Play" ? "\uE768" : "\uE769",
+                FontFamily = (FontFamily?)Application.Current.TryFindResource("IconFont") ?? new FontFamily("Segoe Fluent Icons"),
+                FontSize = 16,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) yield return match;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            foreach (var child in FindVisualChildren<T>(VisualTreeHelper.GetChild(root, index))) yield return child;
+        }
     }
 
     private void Player_PositionChanged(TimeSpan position) => Dispatcher.BeginInvoke(() =>

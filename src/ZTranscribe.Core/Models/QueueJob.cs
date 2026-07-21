@@ -45,6 +45,11 @@ public sealed class QueueJob : INotifyPropertyChanged
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string SourcePath { get; init; }
     public string DisplayName => Path.GetFileName(SourcePath);
+    [JsonIgnore]
+    public string MediaGlyph => Path.GetExtension(SourcePath).ToLowerInvariant() is
+        ".wav" or ".m4a" or ".mp3" or ".wma" or ".aac" or ".flac" or ".ogg" or ".opus" or ".aiff" or ".aif"
+        ? "\uE8D6"
+        : "\uE714";
     public string SourceLanguage
     {
         get => _sourceLanguage;
@@ -209,6 +214,19 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public bool CanRemove => !CanEnd;
     [JsonIgnore]
+    public string StateGlyph => State switch
+    {
+        JobState.Queued => "\uE768",
+        JobState.Preparing => "\uE90F",
+        JobState.Transcribing => "\uE8D6",
+        JobState.Translating => "\uE8FA",
+        JobState.Summarizing => "\uE8A5",
+        JobState.Ready => "\uE73E",
+        JobState.Failed => "\uEA39",
+        JobState.Canceled => "\uE711",
+        _ => "\uE946"
+    };
+    [JsonIgnore]
     public string DurationLabel
     {
         get
@@ -266,6 +284,7 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanEnd));
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(CanRemove));
+        OnPropertyChanged(nameof(StateGlyph));
         NotifyCostChanged();
     }
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -43,6 +44,13 @@ public partial class MainWindow : Window
     {
         foreach (var button in FindVisualChildren<Button>(this))
         {
+            if (button.ToolTip is string toolTip && (toolTip is "Play" or "Pause"))
+            {
+                button.Style = (Style)FindResource("IconButton");
+                button.Content = GlyphBlock(toolTip == "Play" ? "\uE768" : "\uE769");
+                continue;
+            }
+
             if (button.Content is not string label) continue;
             if (label.Contains("Add files", StringComparison.Ordinal))
             {
@@ -54,17 +62,50 @@ public partial class MainWindow : Window
             else if (label == "Translate selected") button.Content = IconLabel("\uE8FA", label);
             else if (label == "Summarize selected") button.Content = IconLabel("\uE8A5", label);
             else if (label == "Open output folder") button.Content = IconLabel("\uE8B7", label);
+            else if (label == "Original captions") button.Content = IconLabel("\uE8A5", "Original");
+            else if (label == "Translated captions") button.Content = IconLabel("\uE8FA", "Translated");
+            else if (label == "Save settings") button.Content = IconLabel("\uE74E", "Save settings");
+            else if (label == "Start current") button.Content = IconLabel("\uE768", "Start");
+            else if (label == "End current") button.Content = IconLabel("\uE711", "End");
+            else if (label == "Retry") button.Content = IconLabel("\uE72C", "Retry");
         }
 
         foreach (var tab in FindVisualChildren<TabItem>(this))
         {
             if (tab.Header is not string header) continue;
-            if (header.Contains("Queue", StringComparison.Ordinal)) tab.Header = IconLabel("\uE8A5", "Queue");
-            else if (header.Contains("Review", StringComparison.Ordinal)) tab.Header = IconLabel("\uE7B3", "Review");
-            else if (header.Contains("Settings", StringComparison.Ordinal)) tab.Header = IconLabel("\uE713", "Settings");
+            if (header.Contains("Queue", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE8A5", "Queue");
+            else if (header.Contains("Review", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE7B3", "Review");
+            else if (header.Contains("Settings", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE713", "Settings");
         }
 
+        ApplyGridIconography();
         ApplyContextMenuIconography();
+    }
+
+    private void JobsGrid_Loaded(object sender, RoutedEventArgs e) => ApplyGridIconography();
+
+    private void ApplyGridIconography()
+    {
+        var glyphs = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Media"] = "\uE714",
+            ["Spoken language"] = "\uE8D6",
+            ["Translation"] = "\uE8FA",
+            ["Summary"] = "\uE8A5",
+            ["Stage"] = "\uE946",
+            ["Progress"] = "\uE9D9",
+            ["Update"] = "\uE90A",
+            ["Duration"] = "\uE823",
+            ["Estimate (USD)"] = "\uE8C7",
+            ["Actual (USD)"] = "\uE73E",
+            ["Actions"] = "\uE712"
+        };
+
+        foreach (var header in FindVisualChildren<DataGridColumnHeader>(JobsGrid))
+        {
+            if (header.Content is string label && glyphs.TryGetValue(label, out var glyph))
+                header.Content = IconLabel(glyph, label);
+        }
     }
 
     private void ApplyContextMenuIconography()
@@ -94,11 +135,37 @@ public partial class MainWindow : Window
             }
         };
 
+    private static StackPanel IconTabLabel(string glyph, string label) =>
+        new()
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = glyph,
+                    FontFamily = (FontFamily?)Application.Current.TryFindResource("IconFont") ?? new FontFamily("Segoe Fluent Icons"),
+                    FontSize = 20,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                },
+                new TextBlock
+                {
+                    Text = label.ToUpperInvariant(),
+                    FontFamily = (FontFamily?)Application.Current.TryFindResource("DisplayFont") ?? new FontFamily("Arial"),
+                    FontSize = 10,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 6, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                }
+            }
+        };
+
     private static TextBlock GlyphBlock(string glyph) => new()
     {
         Text = glyph,
-        FontFamily = new FontFamily("Segoe MDL2 Assets"),
-        FontSize = 15,
+        FontFamily = (FontFamily?)Application.Current.TryFindResource("IconFont") ?? new FontFamily("Segoe Fluent Icons"),
+        FontSize = 16,
         VerticalAlignment = VerticalAlignment.Center
     };
 

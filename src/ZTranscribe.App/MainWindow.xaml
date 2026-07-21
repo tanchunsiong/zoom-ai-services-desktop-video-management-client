@@ -6,58 +6,65 @@
         WindowStartupLocation="CenterScreen" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="64"/>
+            <RowDefinition Height="70"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="58"/>
+            <RowDefinition Height="64"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{StaticResource Ink}" BorderBrush="{StaticResource Ink}" BorderThickness="0,0,0,1">
-            <Grid Margin="22,0">
+            <Grid Margin="24,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="240"/>
+                    <ColumnDefinition Width="258"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="40" Height="40" Background="{StaticResource Accent}">
+                    <Border Width="42" Height="42" Background="{StaticResource Accent}">
                         <Grid>
-                            <Rectangle Width="13" Height="13" Fill="{StaticResource Yellow}" HorizontalAlignment="Left" VerticalAlignment="Top"/>
-                            <Ellipse Width="17" Height="17" Fill="{StaticResource Blue}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
-                            <TextBlock Text="Z" Foreground="{StaticResource TextOnDark}" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="22"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Rectangle Width="18" Height="18" Fill="{StaticResource Yellow}" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                            <Ellipse Width="18" Height="18" Fill="{StaticResource Blue}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                            <Path Data="M 9,10 L 32,10 L 10,32 L 33,32" Stroke="{StaticResource TextOnDark}" StrokeThickness="3.5"
+                                  StrokeStartLineCap="Square" StrokeEndLineCap="Square"/>
                         </Grid>
                     </Border>
                     <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="Z SCRIBE" Foreground="{StaticResource TextOnDark}" FontFamily="{StaticResource DisplayFont}"
-                                   FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-                        <TextBlock Text="MEDIA INTELLIGENCE" Foreground="{StaticResource TextOnDarkMuted}" FontSize="9" FontWeight="SemiBold"
+                                   FontSize="21" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock Text="MEDIA INTELLIGENCE / 01" Foreground="{StaticResource TextOnDarkMuted}" FontFamily="{StaticResource BodyFont}" FontSize="9" FontWeight="SemiBold"
                                    Margin="1,2,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="＋ Add files" Style="{StaticResource PrimaryButton}" Click="AddFiles_Click"/>
+                <Border Grid.Column="1" BorderBrush="#353531" BorderThickness="1,0,1,0" Padding="14,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource HeaderPrimaryButton}" Click="AddFiles_Click" ToolTip="Add media files">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="17" VerticalAlignment="Center"/>
+                            <TextBlock Text="Add files" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Button>
                     <Button Style="{StaticResource HeaderButton}" Click="AddFolder_Click" ToolTip="Add a folder recursively">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="15" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="16" VerticalAlignment="Center"/>
                             <TextBlock Text="Add folder" Margin="8,0,0,0"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource HeaderButton}" Click="StartAll_Click" IsEnabled="{Binding IsQueueIdle}" ToolTip="Start all queued jobs">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
                             <TextBlock Text="Start all" Margin="8,0,0,0"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource HeaderButton}" Click="PauseResume_Click" IsEnabled="{Binding IsQueueRunning}" ToolTip="Pause or resume the queue">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE769;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE769;" FontFamily="{StaticResource IconFont}" FontSize="15" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding PauseResumeLabel}" Margin="8,0,0,0"/>
                         </StackPanel>
                     </Button>
-                </StackPanel>
+                    </StackPanel>
+                </Border>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8" Fill="#2DD4A7" Margin="0,0,8,0"/>
-                    <TextBlock Text="Audio-only upload · original audio" Foreground="{StaticResource TextMuted}"/>
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource Green}" Margin="0,0,8,0"/>
+                    <TextBlock Text="LOCAL MEDIA / AUDIO ONLY" Foreground="{StaticResource TextOnDarkMuted}" FontSize="11" FontWeight="SemiBold"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -97,10 +104,20 @@
                             <TextBlock Text="{Binding LastAddedCountLabel}" Foreground="{StaticResource Accent}" Margin="0,5,0,0" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
-                    <Border Grid.Row="1" Margin="0,20,0,14" Padding="14" Background="{StaticResource BlueSoft}" BorderBrush="{StaticResource Blue}" BorderThickness="1" CornerRadius="3">
-                        <TextBlock Text="FFmpeg copies compatible audio streams; incompatible codecs are decoded to PCM WAV without resampling or remixing. Video is never uploaded." Foreground="{StaticResource TextPrimary}"/>
+                    <Border Grid.Row="1" Margin="0,20,0,14" Padding="12" Background="{StaticResource BlueSoft}" BorderBrush="{StaticResource Blue}" BorderThickness="1" CornerRadius="0">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="30" Height="30" Background="{StaticResource Blue}" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="16" Foreground="{StaticResource TextOnDark}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="AUDIO NORMALIZATION" FontFamily="{StaticResource DisplayFont}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Blue}"/>
+                                <TextBlock Text="FFmpeg copies compatible audio streams; incompatible codecs are decoded to PCM WAV without resampling or remixing. Video is never uploaded."
+                                           Foreground="{StaticResource TextPrimary}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
-                    <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}"
+                    <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" Loaded="JobsGrid_Loaded"
                               IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
                               PreviewMouseRightButtonDown="JobsGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
@@ -112,7 +129,24 @@
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Media" Binding="{Binding DisplayName}" Width="230"/>
+                            <DataGridTemplateColumn Header="Media" Width="230">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="8,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="28"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="24" Height="24" Background="{StaticResource AccentSoft}" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding MediaGlyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                           Foreground="{StaticResource Accent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" ToolTip="{Binding SourcePath}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Spoken language" Width="155">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -146,7 +180,19 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Stage" Binding="{Binding State}" Width="95"/>
+                            <DataGridTemplateColumn Header="Stage" Width="108">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center" ToolTip="{Binding StatusMessage}">
+                                            <Border Width="24" Height="24" Background="{StaticResource BlueSoft}">
+                                                <TextBlock Text="{Binding StateGlyph}" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                           Foreground="{StaticResource Blue}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding State}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Progress" Width="145">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
