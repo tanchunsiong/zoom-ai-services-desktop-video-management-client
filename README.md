@@ -15,6 +15,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as a source-named `.summary.md` sidecar, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density, then includes a 10% contingency; actual cost continues to use measured API usage.
 - Embedded LibVLCSharp player with software-decoded video, captions below the player, and a seekable caption timeline.
 - Separate per-job and all-jobs `Estimate` and `Actual` cost columns, itemized for Scribe, Translator, and Summarizer. Pre-transcript character estimates are language-aware; completed jobs use measured Zoom API usage for Translator and Summarizer.
+- Separate per-job and all-jobs processing-time estimates and actuals, itemized for Scribe, Translator, and Summarizer. Time estimates are rough service-time heuristics based on media duration and text volume, not provider SLAs; actuals are measured after a job completes.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
 - Windows GitHub Actions build and downloadable `win-x64` workflow artifact.
 

@@ -72,6 +72,8 @@ public sealed class JobQueueService(
     public async Task RetryAsync(QueueJob job)
     {
         job.Error = null;
+        job.StartedAt = null;
+        job.CompletedAt = null;
         job.Report(JobState.Queued, 0, "Queued to retry");
         await SaveAsync();
     }
@@ -173,6 +175,8 @@ public sealed class JobQueueService(
         try
         {
             job.Error = null;
+            job.StartedAt = DateTimeOffset.UtcNow;
+            job.CompletedAt = null;
             var cancellationToken = _currentCancellation.Token;
             var cues = WebVtt.Parse(await File.ReadAllTextAsync(job.OriginalVttPath, cancellationToken));
             job.TranscriptCharacters = cues.Sum(cue => (long)cue.Text.Length);
@@ -198,6 +202,7 @@ public sealed class JobQueueService(
             job.TranslatedVttPath = OutputPathsFor(job).TranslatedVtt(job.TranslationLanguage);
             await File.WriteAllTextAsync(
                 job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
+            job.CompletedAt = DateTimeOffset.UtcNow;
             job.Report(JobState.Ready, 100, "Translated captions are ready to review");
         }
         catch (OperationCanceledException)
@@ -250,6 +255,8 @@ public sealed class JobQueueService(
         try
         {
             job.Error = null;
+            job.StartedAt = DateTimeOffset.UtcNow;
+            job.CompletedAt = null;
             var cancellationToken = _currentCancellation.Token;
             var hasTranslatedCaptions = !string.IsNullOrWhiteSpace(job.TranslationLanguage) &&
                 File.Exists(job.TranslatedVttPath);
@@ -257,6 +264,7 @@ public sealed class JobQueueService(
             var cues = WebVtt.Parse(await File.ReadAllTextAsync(captionPath, cancellationToken));
             var language = hasTranslatedCaptions ? job.TranslationLanguage : job.SourceLanguage;
             await GenerateSummaryAsync(job, cues, language, credentials, cancellationToken);
+            job.CompletedAt = DateTimeOffset.UtcNow;
             job.Report(JobState.Ready, 100, "Summary is ready to review");
         }
         catch (OperationCanceledException)
@@ -390,6 +398,8 @@ public sealed class JobQueueService(
         try
         {
             job.Error = null;
+            job.StartedAt = DateTimeOffset.UtcNow;
+            job.CompletedAt = null;
             job.TranscriptCharacters = 0;
             job.TranslationInputCharacters = 0;
             job.TranslationOutputCharacters = 0;

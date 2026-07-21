@@ -104,6 +104,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ActualQueueTranslateCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TranslateUsd));
     public string ActualQueueSummaryCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.SummarizeUsd));
     public string ActualQueueTotalCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TotalUsd));
+    public string EstimatedQueueScribeTimeLabel => FormatAggregateTime(Jobs.Select(job => job.TimeComparison.Estimate.Scribe));
+    public string EstimatedQueueTranslateTimeLabel => FormatAggregateTime(Jobs.Select(job => job.TimeComparison.Estimate.Translate));
+    public string EstimatedQueueSummaryTimeLabel => FormatAggregateTime(Jobs.Select(job => job.TimeComparison.Estimate.Summarize));
+    public string EstimatedQueueTotalTimeLabel => FormatAggregateTime(Jobs.Select(job => job.TimeComparison.Estimate.Total));
+    public string ActualQueueScribeTimeLabel => FormatKnownTime(Jobs.Select(job => job.TimeComparison.Actual.Scribe));
+    public string ActualQueueTranslateTimeLabel => FormatKnownTime(Jobs.Select(job => job.TimeComparison.Actual.Translate));
+    public string ActualQueueSummaryTimeLabel => FormatKnownTime(Jobs.Select(job => job.TimeComparison.Actual.Summarize));
+    public string ActualQueueTotalTimeLabel => FormatKnownTime(Jobs.Select(job => job.TimeComparison.Actual.Total));
     public int UnknownDurationCount => Jobs.Count(job => job.DurationSeconds is null);
     public int WithoutAudioCount => Jobs.Count(job => job.HasAudio == false);
     public bool HasUnknownDurationJobs => UnknownDurationCount > 0;
@@ -308,6 +316,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return values.Length == 0 ? "--" : JobCostEstimator.FormatUsd(values.Sum());
     }
 
+    private static string FormatAggregateTime(IEnumerable<TimeSpan?> times)
+    {
+        var values = times.ToArray();
+        if (values.Length == 0) return JobTimeEstimator.Format(TimeSpan.Zero);
+        var known = values.Where(value => value is not null).Select(value => value!.Value).ToArray();
+        if (known.Length == 0) return "--";
+        var subtotal = JobTimeEstimator.Format(known.Aggregate(TimeSpan.Zero, (total, value) => total + value));
+        return known.Length == values.Length ? subtotal : $"{subtotal}+";
+    }
+
+    private static string FormatKnownTime(IEnumerable<TimeSpan?> times)
+    {
+        var values = times.Where(value => value is not null).Select(value => value!.Value).ToArray();
+        return values.Length == 0
+            ? "--"
+            : JobTimeEstimator.Format(values.Aggregate(TimeSpan.Zero, (total, value) => total + value));
+    }
+
     private void Jobs_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)
@@ -328,7 +354,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private void Job_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_isInitializing) return;
-        if (e.PropertyName == nameof(QueueJob.CostComparison)) RaiseQueueCostProperties();
+        if (e.PropertyName is nameof(QueueJob.CostComparison) or nameof(QueueJob.TimeComparison)) RaiseQueueCostProperties();
         if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio))
             RefreshQueueFilter();
     }
@@ -371,6 +397,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ActualQueueTranslateCostLabel));
         OnPropertyChanged(nameof(ActualQueueSummaryCostLabel));
         OnPropertyChanged(nameof(ActualQueueTotalCostLabel));
+        OnPropertyChanged(nameof(EstimatedQueueScribeTimeLabel));
+        OnPropertyChanged(nameof(EstimatedQueueTranslateTimeLabel));
+        OnPropertyChanged(nameof(EstimatedQueueSummaryTimeLabel));
+        OnPropertyChanged(nameof(EstimatedQueueTotalTimeLabel));
+        OnPropertyChanged(nameof(ActualQueueScribeTimeLabel));
+        OnPropertyChanged(nameof(ActualQueueTranslateTimeLabel));
+        OnPropertyChanged(nameof(ActualQueueSummaryTimeLabel));
+        OnPropertyChanged(nameof(ActualQueueTotalTimeLabel));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

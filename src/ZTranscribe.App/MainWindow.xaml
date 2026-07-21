@@ -8,7 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="70"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="64"/>
+            <RowDefinition Height="128"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{StaticResource Ink}" BorderBrush="{StaticResource Ink}" BorderThickness="0,0,0,1">
@@ -273,6 +273,32 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Estimate (time)" Width="145">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="6,4" ToolTip="Rough service-time estimate; actual time depends on API load and queue concurrency.">
+                                            <TextBlock Text="Estimate" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,0,0,2"/>
+                                            <TextBlock Text="{Binding EstimatedScribeTimeLabel, StringFormat=Scribe  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding EstimatedTranslateTimeLabel, StringFormat=Translate  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding EstimatedSummaryTimeLabel, StringFormat=Summary  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding EstimatedTotalTimeLabel, StringFormat=Total  {0}}" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Actual (time)" Width="145">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="6,4" ToolTip="Measured time spent in each processing stage after completion.">
+                                            <TextBlock Text="Actual" FontSize="10" FontWeight="SemiBold" Foreground="#58D6A8" Margin="0,0,0,2"/>
+                                            <TextBlock Text="{Binding ActualScribeTimeLabel, StringFormat=Scribe  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding ActualTranslateTimeLabel, StringFormat=Translate  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding ActualSummaryTimeLabel, StringFormat=Summary  {0}}" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                            <TextBlock Text="{Binding ActualTotalTimeLabel, StringFormat=Total  {0}}" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Actions" Width="125">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -494,6 +520,20 @@
                         <TextBlock Text="{Binding ActualQueueTranslateCostLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
                         <TextBlock Text="{Binding ActualQueueSummaryCostLabel, StringFormat=Summary  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
                         <TextBlock Text="{Binding ActualQueueTotalCostLabel, StringFormat=Total  {0}}" Foreground="{StaticResource TextOnDark}" FontWeight="Bold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                        <TextBlock Text="Time estimate" Foreground="#AFC4FF" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueScribeTimeLabel, StringFormat=Scribe  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueTranslateTimeLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueSummaryTimeLabel, StringFormat=Summary  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding EstimatedQueueTotalTimeLabel, StringFormat=Total  {0}}" Foreground="{StaticResource TextOnDark}" FontWeight="Bold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                        <TextBlock Text="Time actual" Foreground="#73C79B" FontWeight="SemiBold" Margin="0,0,20,0"/>
+                        <TextBlock Text="{Binding ActualQueueScribeTimeLabel, StringFormat=Scribe  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueTranslateTimeLabel, StringFormat=Translate  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueSummaryTimeLabel, StringFormat=Summary  {0}}" Foreground="{StaticResource TextOnDark}" Margin="0,0,14,0"/>
+                        <TextBlock Text="{Binding ActualQueueTotalTimeLabel, StringFormat=Total  {0}}" Foreground="{StaticResource TextOnDark}" FontWeight="Bold"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>

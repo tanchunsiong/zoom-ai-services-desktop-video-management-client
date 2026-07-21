@@ -84,6 +84,45 @@ Check("Default Scribe rate estimates cost as soon as duration is known", () =>
     return comparison.Estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
 });
 
+Check("Processing time estimates use duration and text volume", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        SourceLanguage = "en-US",
+        TranslationLanguage = "fr-FR",
+        DurationSeconds = 120,
+        TranscriptCharacters = 1_000,
+        Summarize = true
+    };
+    var comparison = JobTimeEstimator.Compare(job, new UserSettings());
+    return comparison.Estimate.Scribe is { TotalSeconds: > 0 }
+        && comparison.Estimate.Translate is { TotalSeconds: > 0 }
+        && comparison.Estimate.Summarize is { TotalSeconds: > 0 }
+        && comparison.Estimate.Total is { TotalSeconds: > 0 }
+        && JobTimeEstimator.Format(TimeSpan.FromSeconds(63)) == "1m 03s";
+});
+
+Check("Processing time actuals measure contiguous queue stages", () =>
+{
+    var started = DateTimeOffset.UtcNow.AddMinutes(-1);
+    var job = new QueueJob
+    {
+        SourcePath = "sample.mp4",
+        DurationSeconds = 60,
+        StartedAt = started,
+        CompletedAt = started.AddSeconds(9)
+    };
+    job.Events.Add(new JobEvent(started, JobState.Preparing, "Preparing"));
+    job.Events.Add(new JobEvent(started.AddSeconds(2), JobState.Transcribing, "Transcribing"));
+    job.Events.Add(new JobEvent(started.AddSeconds(7), JobState.Ready, "Ready"));
+    var actual = JobTimeEstimator.Compare(job, new UserSettings()).Actual;
+    return actual.Scribe == TimeSpan.FromSeconds(7)
+        && actual.Translate == TimeSpan.Zero
+        && actual.Summarize == TimeSpan.Zero
+        && actual.Total == TimeSpan.FromSeconds(7);
+});
+
 Check("Queue duration labels use hours minutes and seconds", () =>
 {
     var known = new QueueJob { SourcePath = "sample.mp4", DurationSeconds = 3723 };

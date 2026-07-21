@@ -98,6 +98,8 @@ public partial class MainWindow : Window
             ["Duration"] = "\uE823",
             ["Estimate (USD)"] = "\uE8C7",
             ["Actual (USD)"] = "\uE73E",
+            ["Estimate (time)"] = "\uE823",
+            ["Actual (time)"] = "\uE73E",
             ["Actions"] = "\uE712"
         };
 

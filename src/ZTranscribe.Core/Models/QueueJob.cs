@@ -40,6 +40,8 @@ public sealed class QueueJob : INotifyPropertyChanged
     private bool _reuseExistingTranslation;
     private bool _reuseExistingSummary;
     private bool _existingSummaryIsStale;
+    private DateTimeOffset? _startedAt;
+    private DateTimeOffset? _completedAt;
     private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -67,7 +69,22 @@ public sealed class QueueJob : INotifyPropertyChanged
         }
     }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? CompletedAt { get; set; }
+    public DateTimeOffset? StartedAt
+    {
+        get => _startedAt;
+        set
+        {
+            if (Set(ref _startedAt, value)) NotifyCostChanged();
+        }
+    }
+    public DateTimeOffset? CompletedAt
+    {
+        get => _completedAt;
+        set
+        {
+            if (Set(ref _completedAt, value)) NotifyCostChanged();
+        }
+    }
     public double? DurationSeconds
     {
         get => _durationSeconds;
@@ -247,6 +264,8 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public JobCostComparison CostComparison => JobCostEstimator.Compare(this, _costSettings);
     [JsonIgnore]
+    public JobTimeComparison TimeComparison => JobTimeEstimator.Compare(this, _costSettings);
+    [JsonIgnore]
     public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.ScribeUsd);
     [JsonIgnore]
     public string EstimatedTranslateCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.TranslateUsd);
@@ -262,6 +281,22 @@ public sealed class QueueJob : INotifyPropertyChanged
     public string ActualSummaryCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.SummarizeUsd);
     [JsonIgnore]
     public string ActualTotalCostLabel => JobCostEstimator.FormatUsd(CostComparison.Actual.TotalUsd);
+    [JsonIgnore]
+    public string EstimatedScribeTimeLabel => JobTimeEstimator.Format(TimeComparison.Estimate.Scribe);
+    [JsonIgnore]
+    public string EstimatedTranslateTimeLabel => JobTimeEstimator.Format(TimeComparison.Estimate.Translate);
+    [JsonIgnore]
+    public string EstimatedSummaryTimeLabel => JobTimeEstimator.Format(TimeComparison.Estimate.Summarize);
+    [JsonIgnore]
+    public string EstimatedTotalTimeLabel => JobTimeEstimator.Format(TimeComparison.Estimate.Total);
+    [JsonIgnore]
+    public string ActualScribeTimeLabel => JobTimeEstimator.Format(TimeComparison.Actual.Scribe);
+    [JsonIgnore]
+    public string ActualTranslateTimeLabel => JobTimeEstimator.Format(TimeComparison.Actual.Translate);
+    [JsonIgnore]
+    public string ActualSummaryTimeLabel => JobTimeEstimator.Format(TimeComparison.Actual.Summarize);
+    [JsonIgnore]
+    public string ActualTotalTimeLabel => JobTimeEstimator.Format(TimeComparison.Actual.Total);
     [JsonIgnore]
     public string EstimateQualityLabel => TranscriptCharacters > 0 ? "Estimate" : "Rough";
 
@@ -303,6 +338,7 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(DurationLabel));
         OnPropertyChanged(nameof(DurationStatusLabel));
         OnPropertyChanged(nameof(CostComparison));
+        OnPropertyChanged(nameof(TimeComparison));
         OnPropertyChanged(nameof(EstimatedScribeCostLabel));
         OnPropertyChanged(nameof(EstimatedTranslateCostLabel));
         OnPropertyChanged(nameof(EstimatedSummaryCostLabel));
@@ -311,6 +347,14 @@ public sealed class QueueJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(ActualTranslateCostLabel));
         OnPropertyChanged(nameof(ActualSummaryCostLabel));
         OnPropertyChanged(nameof(ActualTotalCostLabel));
+        OnPropertyChanged(nameof(EstimatedScribeTimeLabel));
+        OnPropertyChanged(nameof(EstimatedTranslateTimeLabel));
+        OnPropertyChanged(nameof(EstimatedSummaryTimeLabel));
+        OnPropertyChanged(nameof(EstimatedTotalTimeLabel));
+        OnPropertyChanged(nameof(ActualScribeTimeLabel));
+        OnPropertyChanged(nameof(ActualTranslateTimeLabel));
+        OnPropertyChanged(nameof(ActualSummaryTimeLabel));
+        OnPropertyChanged(nameof(ActualTotalTimeLabel));
         OnPropertyChanged(nameof(EstimateQualityLabel));
     }
 
