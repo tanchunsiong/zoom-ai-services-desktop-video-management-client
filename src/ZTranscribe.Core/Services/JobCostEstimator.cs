@@ -28,7 +28,9 @@ public static class JobCostEstimator
     public static JobCostComparison Compare(QueueJob job, UserSettings settings)
     {
         var estimatedScribe = ScribeCost(job, settings);
-        var actualScribe = job.CompletedAt is not null ? estimatedScribe : null;
+        var actualScribe = job.ReuseExistingTranscript
+            ? 0m
+            : job.CompletedAt is not null ? estimatedScribe : null;
 
         var hasTranslation = !string.IsNullOrWhiteSpace(job.TranslationLanguage) &&
             job.TranslationLanguage != job.SourceLanguage;
@@ -38,11 +40,13 @@ public static class JobCostEstimator
         var actualTranslationCharacters = hasTranslation
             ? job.TranslationInputCharacters + job.TranslationOutputCharacters
             : 0;
-        var estimatedTranslate = hasTranslation
+        var estimatedTranslate = hasTranslation && !job.ReuseExistingTranslation
             ? CharacterCost(estimatedTranslationCharacters, settings.TranslatorUsdPerMillionCharacters)
             : 0m;
         var actualTranslate = !hasTranslation
             ? 0m
+            : job.ReuseExistingTranslation
+                ? 0m
             : job.CompletedAt is not null && actualTranslationCharacters > 0
                 ? CharacterCost(actualTranslationCharacters, settings.TranslatorUsdPerMillionCharacters)
                 : null;
@@ -53,11 +57,13 @@ public static class JobCostEstimator
         var actualSummaryCharacters = job.Summarize
             ? job.SummaryInputCharacters + job.SummaryOutputCharacters
             : 0;
-        var estimatedSummarize = job.Summarize
+        var estimatedSummarize = job.Summarize && !job.ReuseExistingSummary
             ? CharacterCost(estimatedSummaryCharacters, settings.SummarizerUsdPerMillionCharacters)
             : 0m;
         var actualSummarize = !job.Summarize
             ? 0m
+            : job.ReuseExistingSummary
+                ? 0m
             : job.CompletedAt is not null && actualSummaryCharacters > 0
                 ? CharacterCost(actualSummaryCharacters, settings.SummarizerUsdPerMillionCharacters)
                 : null;
@@ -80,6 +86,7 @@ public static class JobCostEstimator
 
     private static decimal? ScribeCost(QueueJob job, UserSettings settings)
     {
+        if (job.ReuseExistingTranscript) return 0m;
         if (job.HasAudio == false) return 0m;
         if (settings.ScribeUsdPerMinute <= 0 || job.DurationSeconds is null) return null;
         return (decimal)Math.Max(0, job.DurationSeconds.Value) / 60m * settings.ScribeUsdPerMinute;

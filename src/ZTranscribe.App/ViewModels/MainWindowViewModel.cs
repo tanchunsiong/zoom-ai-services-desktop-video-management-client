@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows.Data;
 using ZTranscribe.App.Services;
 using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
@@ -25,6 +26,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _summaryText = "";
     private bool _isInitializing;
     private int? _lastAddedCount;
+    private QueueMediaFilter _queueMediaFilter;
 
     public MainWindowViewModel(
         JobQueueService queue,
@@ -38,6 +40,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         Player = player;
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
         SummaryOptions = [new SummaryOption(false, "Off"), new SummaryOption(true, "Summarize")];
+        JobsView = CollectionViewSource.GetDefaultView(Jobs);
+        JobsView.Filter = item => item is QueueJob job && MatchesQueueFilter(job);
         Jobs.CollectionChanged += Jobs_CollectionChanged;
         Queue.StateChanged += (_, _) =>
         {
@@ -50,6 +54,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public JobQueueService Queue { get; }
     public VlcPlaybackService Player { get; }
     public ObservableCollection<QueueJob> Jobs => Queue.Jobs;
+    public ICollectionView JobsView { get; }
     public IReadOnlyList<LanguageOption> SourceLanguages => LanguageCatalog.Transcription;
     public IReadOnlyList<LanguageOption> TranslationLanguages { get; }
     public IReadOnlyList<SummaryOption> SummaryOptions { get; }
@@ -99,21 +104,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ActualQueueTranslateCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TranslateUsd));
     public string ActualQueueSummaryCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.SummarizeUsd));
     public string ActualQueueTotalCostLabel => FormatKnownCost(Jobs.Select(job => job.CostComparison.Actual.TotalUsd));
-    public string QueueCountLabel => $"{Jobs.Count:N0} jobs in queue";
+    public int UnknownDurationCount => Jobs.Count(job => job.DurationSeconds is null);
+    public int WithoutAudioCount => Jobs.Count(job => job.HasAudio == false);
+    public bool HasUnknownDurationJobs => UnknownDurationCount > 0;
+    public bool HasWithoutAudioJobs => WithoutAudioCount > 0;
+    public string UnknownDurationFilterLabel => $"Unknown {UnknownDurationCount:N0}";
+    public string WithoutAudioFilterLabel => $"Without audio {WithoutAudioCount:N0}";
+    public bool IsAllQueueFilter => _queueMediaFilter == QueueMediaFilter.All;
+    public bool IsUnknownDurationFilter => _queueMediaFilter == QueueMediaFilter.UnknownDuration;
+    public bool IsWithoutAudioFilter => _queueMediaFilter == QueueMediaFilter.WithoutAudio;
+    public string QueueCountLabel => _queueMediaFilter == QueueMediaFilter.All
+        ? $"{Jobs.Count:N0} jobs in queue"
+        : $"Showing {Jobs.Count(MatchesQueueFilter):N0} of {Jobs.Count:N0} jobs";
     public string LastAddedCountLabel => _lastAddedCount is null ? "" : $"Last added: {_lastAddedCount:N0}";
     public string QueueDurationLabel
     {
         get
         {
-            var knownSeconds = Jobs.Sum(job => job.DurationSeconds ?? 0);
-            var unknown = Jobs.Count(job => job.DurationSeconds is null);
-            var noAudio = Jobs.Count(job => job.HasAudio == false);
+            var knownSeconds = Jobs.Where(MatchesQueueFilter).Sum(job => job.DurationSeconds ?? 0);
             var duration = TimeSpan.FromSeconds(Math.Max(0, knownSeconds));
-            var details = new List<string>();
-            if (unknown > 0) details.Add($"{unknown:N0} unknown");
-            if (noAudio > 0) details.Add($"{noAudio:N0} without audio");
-            var label = $"Media duration: {(int)duration.TotalHours:N0}h {duration.Minutes:00}m";
-            return details.Count == 0 ? label : $"{label}; {string.Join(", ", details)}";
+            return $"Media duration: {(int)duration.TotalHours:N0}h {duration.Minutes:00}m";
         }
     }
     public string SummaryText
@@ -149,6 +159,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _isInitializing = true;
         try { await Queue.InitializeAsync(); }
         finally { _isInitializing = false; }
+        RefreshQueueFilter();
         RaiseQueueCostProperties();
         Notice = HasCredentials ? $"{Jobs.Count} job{(Jobs.Count == 1 ? "" : "s")} in the library" :
             "Add Zoom Build credentials in Settings before starting the queue";
@@ -163,6 +174,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         finally
         {
             _isInitializing = false;
+            RefreshQueueFilter();
             RaiseQueueCostProperties();
         }
     }
@@ -193,6 +205,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             foreach (var job in Jobs) job.ConfigureCostEstimate(Settings);
         }
         finally { _isInitializing = false; }
+        RefreshQueueFilter();
         RaiseQueueCostProperties();
         Notice = "Settings saved securely";
         OnPropertyChanged(nameof(ApiKey));
@@ -210,6 +223,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         finally
         {
             _isInitializing = false;
+            RefreshQueueFilter();
             RaiseQueueCostProperties();
         }
     }
@@ -218,6 +232,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         _lastAddedCount = count;
         OnPropertyChanged(nameof(LastAddedCountLabel));
+    }
+
+    public void SetQueueMediaFilter(QueueMediaFilter filter)
+    {
+        if (_queueMediaFilter == filter) return;
+        _queueMediaFilter = filter;
+        JobsView.Refresh();
+        RaiseQueueFilterProperties();
     }
 
     public async Task OpenForReviewAsync(QueueJob job, bool translated)
@@ -296,20 +318,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 job.ConfigureCostEstimate(Settings);
                 job.PropertyChanged += Job_PropertyChanged;
             }
-        OnPropertyChanged(nameof(QueueCountLabel));
-        if (!_isInitializing) RaiseQueueCostProperties();
+        if (!_isInitializing)
+        {
+            RefreshQueueFilter();
+            RaiseQueueCostProperties();
+        }
     }
 
     private void Job_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_isInitializing && e.PropertyName == nameof(QueueJob.CostComparison))
-            RaiseQueueCostProperties();
+        if (_isInitializing) return;
+        if (e.PropertyName == nameof(QueueJob.CostComparison)) RaiseQueueCostProperties();
+        if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio))
+            RefreshQueueFilter();
+    }
+
+    private bool MatchesQueueFilter(QueueJob job) => _queueMediaFilter switch
+    {
+        QueueMediaFilter.UnknownDuration => job.DurationSeconds is null,
+        QueueMediaFilter.WithoutAudio => job.HasAudio == false,
+        _ => true
+    };
+
+    private void RefreshQueueFilter()
+    {
+        JobsView.Refresh();
+        RaiseQueueFilterProperties();
+    }
+
+    private void RaiseQueueFilterProperties()
+    {
+        OnPropertyChanged(nameof(QueueCountLabel));
+        OnPropertyChanged(nameof(QueueDurationLabel));
+        OnPropertyChanged(nameof(UnknownDurationCount));
+        OnPropertyChanged(nameof(WithoutAudioCount));
+        OnPropertyChanged(nameof(HasUnknownDurationJobs));
+        OnPropertyChanged(nameof(HasWithoutAudioJobs));
+        OnPropertyChanged(nameof(UnknownDurationFilterLabel));
+        OnPropertyChanged(nameof(WithoutAudioFilterLabel));
+        OnPropertyChanged(nameof(IsAllQueueFilter));
+        OnPropertyChanged(nameof(IsUnknownDurationFilter));
+        OnPropertyChanged(nameof(IsWithoutAudioFilter));
     }
 
     private void RaiseQueueCostProperties()
     {
         OnPropertyChanged(nameof(EstimatedQueueScribeCostLabel));
-        OnPropertyChanged(nameof(QueueDurationLabel));
         OnPropertyChanged(nameof(EstimatedQueueTranslateCostLabel));
         OnPropertyChanged(nameof(EstimatedQueueSummaryCostLabel));
         OnPropertyChanged(nameof(EstimatedQueueTotalCostLabel));
@@ -328,4 +382,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     }
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+public enum QueueMediaFilter
+{
+    All,
+    UnknownDuration,
+    WithoutAudio
 }

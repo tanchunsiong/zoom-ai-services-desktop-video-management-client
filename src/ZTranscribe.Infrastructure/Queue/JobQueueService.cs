@@ -25,11 +25,21 @@ public sealed class JobQueueService(
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var job in await queueStore.LoadAsync(cancellationToken)) Jobs.Add(job);
+        var foundExistingOutputs = false;
+        foreach (var job in await queueStore.LoadAsync(cancellationToken))
+        {
+            foundExistingOutputs |= ApplyExistingOutputs(job, markComplete: true);
+            Jobs.Add(job);
+        }
         var missing = Jobs.Where(job => job.DurationSeconds is null && File.Exists(job.SourcePath)).ToArray();
-        if (missing.Length == 0) return;
+        if (missing.Length == 0)
+        {
+            if (foundExistingOutputs) await SaveAsync();
+            return;
+        }
         var settings = await settingsStore.LoadAsync(cancellationToken);
-        if (await ProbeDurationsAsync(missing, settings, cancellationToken) > 0) await SaveAsync();
+        if (await ProbeDurationsAsync(missing, settings, cancellationToken) > 0 || foundExistingOutputs)
+            await SaveAsync();
     }
 
     public async Task<int> AddAsync(IEnumerable<string> files, string sourceLanguage, string? translationLanguage)
@@ -45,6 +55,7 @@ public sealed class JobQueueService(
                 TranslationLanguage = translationLanguage ?? "",
                 Summarize = true
             };
+            ApplyExistingOutputs(job, markComplete: true);
             Jobs.Add(job);
             added.Add(job);
         }
@@ -69,7 +80,12 @@ public sealed class JobQueueService(
     {
         if (!job.CanConfigureSourceLanguage)
             throw new InvalidOperationException("The spoken language can only be changed before transcription starts.");
-        job.SourceLanguage = sourceLanguage;
+        if (!string.Equals(job.SourceLanguage, sourceLanguage, StringComparison.Ordinal))
+        {
+            job.SourceLanguage = sourceLanguage;
+            job.ExistingSummaryIsStale = true;
+            job.ReuseExistingSummary = false;
+        }
         if (job.TranslationLanguage == sourceLanguage)
         {
             job.TranslationLanguage = "";
@@ -93,12 +109,17 @@ public sealed class JobQueueService(
             job.SummaryPath = null;
             job.SummaryInputCharacters = 0;
             job.SummaryOutputCharacters = 0;
+            job.ExistingSummaryIsStale = true;
+            job.ReuseExistingSummary = false;
         }
         job.TranslationLanguage = translationLanguage;
+        ApplyExistingOutputs(job, markComplete: false);
         if (job.State == JobState.Ready)
             job.StatusMessage = string.IsNullOrWhiteSpace(translationLanguage)
                 ? "Transcript is ready to review"
-                : "Transcript ready; translation has not been generated";
+                : job.ReuseExistingTranslation
+                    ? "Existing translated captions found"
+                    : "Transcript ready; translation has not been generated";
         await SaveAsync();
     }
 
@@ -112,9 +133,12 @@ public sealed class JobQueueService(
         job.SummaryInputCharacters = 0;
         job.SummaryOutputCharacters = 0;
         job.SummaryPath = null;
+        ApplyExistingOutputs(job, markComplete: false);
         if (job.State == JobState.Ready)
             job.StatusMessage = summarize
-                ? "Transcript ready; summary has not been generated"
+                ? job.ReuseExistingSummary
+                    ? "Existing summary found"
+                    : "Transcript ready; summary has not been generated"
                 : "Transcript is ready to review";
         await SaveAsync();
     }
@@ -128,6 +152,15 @@ public sealed class JobQueueService(
             throw new InvalidOperationException("Choose a translation target in this job's queue row first.");
         if (job.TranslationLanguage == job.SourceLanguage)
             throw new InvalidOperationException("The translation target must differ from the spoken language.");
+
+        ApplyExistingOutputs(job, markComplete: false);
+        if (job.ReuseExistingTranslation)
+        {
+            job.Error = null;
+            job.Report(JobState.Ready, 100, "Using existing translated captions");
+            await SaveAsync();
+            return;
+        }
 
         var credentials = await credentialVault.LoadAsync();
         if (credentials is not { IsComplete: true })
@@ -196,6 +229,15 @@ public sealed class JobQueueService(
             throw new InvalidOperationException("Complete transcription before summarizing this job.");
         if (!job.Summarize)
             throw new InvalidOperationException("Choose Summarize in this job's queue row first.");
+
+        ApplyExistingOutputs(job, markComplete: false);
+        if (job.ReuseExistingSummary)
+        {
+            job.Error = null;
+            job.Report(JobState.Ready, 100, "Using existing summary");
+            await SaveAsync();
+            return;
+        }
 
         var credentials = await credentialVault.LoadAsync();
         if (credentials is not { IsComplete: true })
@@ -347,12 +389,31 @@ public sealed class JobQueueService(
         var work = Path.Combine(paths.WorkRoot, job.Id.ToString("N"));
         try
         {
+            job.Error = null;
             job.TranscriptCharacters = 0;
             job.TranslationInputCharacters = 0;
             job.TranslationOutputCharacters = 0;
             job.SummaryInputCharacters = 0;
             job.SummaryOutputCharacters = 0;
-            job.SummaryPath = null;
+            var output = OutputPathsFor(job);
+            Directory.CreateDirectory(output.Directory);
+            ApplyExistingOutputs(job, markComplete: false);
+
+            if (job.ReuseExistingTranscript)
+            {
+                var existingCues = await TryReadExistingVttAsync(job.OriginalVttPath, cancellationToken);
+                if (existingCues is not null)
+                {
+                    job.Report(JobState.Preparing, 20, "Using existing original captions");
+                    job.TranscriptCharacters = existingCues.Sum(cue => (long)cue.Text.Length);
+                    await CompleteRemainingTasksAsync(job, existingCues, credentials, cancellationToken);
+                    return;
+                }
+
+                job.ReuseExistingTranscript = false;
+                job.OriginalVttPath = null;
+            }
+
             job.Report(JobState.Preparing, 4, "Inspecting media and preparing a Zoom-compatible audio stream");
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
@@ -390,49 +451,13 @@ public sealed class JobQueueService(
                 .ToArray();
             var original = new TranscriptDocument(job.SourceLanguage, originalCues,
                 string.Join("\n", originalCues.Select(x => x.Text)));
-            IReadOnlyList<TranscriptCue> summaryCues = originalCues;
-            var summaryLanguage = job.SourceLanguage;
             job.TranscriptCharacters = original.Text.Length;
-            var output = OutputPathsFor(job);
-            Directory.CreateDirectory(output.Directory);
             job.OriginalVttPath = output.OriginalVtt;
             job.TranscriptJsonPath = output.TranscriptJson;
             await File.WriteAllTextAsync(job.OriginalVttPath, WebVtt.Write(originalCues), cancellationToken);
             await File.WriteAllTextAsync(job.TranscriptJsonPath,
                 JsonSerializer.Serialize(original, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
-
-            if (!string.IsNullOrWhiteSpace(job.TranslationLanguage) && job.TranslationLanguage != job.SourceLanguage)
-            {
-                var route = TranslationRoute.Build(job.SourceLanguage, job.TranslationLanguage);
-                var translated = (IReadOnlyList<TranscriptCue>)originalCues;
-                for (var step = 0; step < route.Count; step++)
-                {
-                    var (source, target) = route[step];
-                    job.Report(JobState.Translating, 78 + step * 8,
-                        route.Count == 1 ? $"Translating to {LanguageCatalog.NameFor(target)}" :
-                        $"Translation step {step + 1} of {route.Count}: {LanguageCatalog.NameFor(source)} → {LanguageCatalog.NameFor(target)}");
-                    var result = await zoom.TranslateCuesAsync(translated, source, target, credentials, cancellationToken);
-                    translated = result.Cues;
-                    job.TranslationInputCharacters += result.InputCharacters;
-                    job.TranslationOutputCharacters += result.OutputCharacters;
-                    await SaveAsync();
-                }
-                job.TranslatedVttPath = output.TranslatedVtt(job.TranslationLanguage);
-                await File.WriteAllTextAsync(job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
-                summaryCues = translated;
-                summaryLanguage = job.TranslationLanguage;
-            }
-
-            if (job.Summarize)
-            {
-                await GenerateSummaryAsync(
-                    job, summaryCues, summaryLanguage, credentials, cancellationToken);
-            }
-
-            job.CompletedAt = DateTimeOffset.UtcNow;
-            job.Report(JobState.Ready, 100, job.Summarize
-                ? "Captions and summary are ready to review"
-                : "Transcript is ready to review");
+            await CompleteRemainingTasksAsync(job, originalCues, credentials, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -455,6 +480,79 @@ public sealed class JobQueueService(
         }
     }
 
+    private async Task CompleteRemainingTasksAsync(
+        QueueJob job,
+        IReadOnlyList<TranscriptCue> originalCues,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TranscriptCue> summaryCues = originalCues;
+        var summaryLanguage = job.SourceLanguage;
+        if (!string.IsNullOrWhiteSpace(job.TranslationLanguage) && job.TranslationLanguage != job.SourceLanguage)
+        {
+            var translated = job.ReuseExistingTranslation
+                ? await TryReadExistingVttAsync(job.TranslatedVttPath, cancellationToken)
+                : null;
+            if (translated is not null)
+            {
+                job.Report(JobState.Translating, 90, "Using existing translated captions");
+            }
+            else
+            {
+                job.ReuseExistingTranslation = false;
+                translated = originalCues;
+                var route = TranslationRoute.Build(job.SourceLanguage, job.TranslationLanguage);
+                for (var step = 0; step < route.Count; step++)
+                {
+                    var (source, target) = route[step];
+                    job.Report(JobState.Translating, 78 + step * 8,
+                        route.Count == 1
+                            ? $"Translating to {LanguageCatalog.NameFor(target)}"
+                            : $"Translation step {step + 1} of {route.Count}: {LanguageCatalog.NameFor(source)} to {LanguageCatalog.NameFor(target)}");
+                    var result = await zoom.TranslateCuesAsync(
+                        translated, source, target, credentials, cancellationToken);
+                    translated = result.Cues;
+                    job.TranslationInputCharacters += result.InputCharacters;
+                    job.TranslationOutputCharacters += result.OutputCharacters;
+                    await SaveAsync();
+                }
+                job.TranslatedVttPath = OutputPathsFor(job).TranslatedVtt(job.TranslationLanguage);
+                await File.WriteAllTextAsync(
+                    job.TranslatedVttPath, WebVtt.Write(translated), cancellationToken);
+            }
+            summaryCues = translated;
+            summaryLanguage = job.TranslationLanguage;
+        }
+
+        if (job.Summarize)
+        {
+            if (job.ReuseExistingSummary && NonEmptyFile(job.SummaryPath!))
+                job.Report(JobState.Summarizing, 96, "Using existing summary");
+            else
+            {
+                job.ReuseExistingSummary = false;
+                await GenerateSummaryAsync(
+                    job, summaryCues, summaryLanguage, credentials, cancellationToken);
+            }
+        }
+
+        job.CompletedAt = DateTimeOffset.UtcNow;
+        ReportReady(job);
+    }
+
+    private static void ReportReady(QueueJob job)
+    {
+        var reused = new List<string>();
+        if (job.ReuseExistingTranscript) reused.Add("captions");
+        if (job.ReuseExistingTranslation) reused.Add("translation");
+        if (job.ReuseExistingSummary) reused.Add("summary");
+        job.Report(JobState.Ready, 100, reused.Count > 0
+            ? $"Ready; reused existing {string.Join(", ", reused)}"
+            : job.Summarize
+                ? "Captions and summary are ready to review"
+                : "Transcript is ready to review");
+    }
+
     private async Task GenerateSummaryAsync(
         QueueJob job,
         IReadOnlyList<TranscriptCue> cues,
@@ -470,6 +568,8 @@ public sealed class JobQueueService(
         var result = await zoom.SummarizeAsync(text, language, credentials, cancellationToken);
         job.SummaryInputCharacters = result.InputCharacters;
         job.SummaryOutputCharacters = result.OutputCharacters;
+        job.ExistingSummaryIsStale = false;
+        job.ReuseExistingSummary = false;
         job.SummaryPath = OutputPathsFor(job).Summary;
         await File.WriteAllTextAsync(job.SummaryPath, result.Text, cancellationToken);
         await SaveAsync();
@@ -491,6 +591,105 @@ public sealed class JobQueueService(
             Path.Combine(Directory, $"{Stem}.translated-{language}.vtt");
     }
 
+    internal static ExistingJobOutputs ExistingOutputsFor(QueueJob job)
+    {
+        var paths = OutputPathsFor(job);
+        var originalVtt = ValidVttFile(paths.OriginalVtt) ? paths.OriginalVtt : null;
+        var transcriptJson = NonEmptyFile(paths.TranscriptJson) ? paths.TranscriptJson : null;
+        var translatedVtt = !string.IsNullOrWhiteSpace(job.TranslationLanguage) &&
+                            job.TranslationLanguage != job.SourceLanguage &&
+                            ValidVttFile(paths.TranslatedVtt(job.TranslationLanguage))
+            ? paths.TranslatedVtt(job.TranslationLanguage)
+            : null;
+        var summary = job.Summarize && !job.ExistingSummaryIsStale && NonEmptyFile(paths.Summary)
+            ? paths.Summary
+            : null;
+        return new ExistingJobOutputs(originalVtt, transcriptJson, translatedVtt, summary);
+    }
+
+    internal sealed record ExistingJobOutputs(
+        string? OriginalVtt,
+        string? TranscriptJson,
+        string? TranslatedVtt,
+        string? Summary)
+    {
+        public bool HasAny => OriginalVtt is not null || TranscriptJson is not null ||
+                              TranslatedVtt is not null || Summary is not null;
+    }
+
+    internal static bool ApplyExistingOutputs(QueueJob job, bool markComplete)
+    {
+        var outputs = ExistingOutputsFor(job);
+        job.OriginalVttPath = outputs.OriginalVtt;
+        job.TranscriptJsonPath = outputs.TranscriptJson;
+        job.TranslatedVttPath = outputs.TranslatedVtt;
+        job.SummaryPath = outputs.Summary;
+        job.ReuseExistingTranscript = outputs.OriginalVtt is not null;
+        job.ReuseExistingTranslation = outputs.TranslatedVtt is not null;
+        job.ReuseExistingSummary = outputs.Summary is not null;
+
+        var needsTranslation = !string.IsNullOrWhiteSpace(job.TranslationLanguage) &&
+                               job.TranslationLanguage != job.SourceLanguage;
+        var allRequestedOutputsExist = outputs.OriginalVtt is not null &&
+                                       (!needsTranslation || outputs.TranslatedVtt is not null) &&
+                                       (!job.Summarize || outputs.Summary is not null);
+        if (markComplete && allRequestedOutputsExist && job.State != JobState.Ready)
+        {
+            job.Error = null;
+            job.CompletedAt ??= DateTimeOffset.UtcNow;
+            job.Report(JobState.Ready, 100, "All requested outputs already exist");
+        }
+        else if (markComplete && outputs.HasAny && job.State == JobState.Queued)
+        {
+            job.StatusMessage = "Existing outputs found; only missing tasks will run";
+        }
+        return outputs.HasAny;
+    }
+
+    private static bool NonEmptyFile(string path) =>
+        File.Exists(path) && new FileInfo(path).Length > 0;
+
+    private static bool ValidVttFile(string path)
+    {
+        if (!NonEmptyFile(path)) return false;
+        try
+        {
+            return WebVtt.Parse(File.ReadAllText(path)).Count > 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<IReadOnlyList<TranscriptCue>?> TryReadExistingVttAsync(
+        string? path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !NonEmptyFile(path)) return null;
+        try
+        {
+            var cues = WebVtt.Parse(await File.ReadAllTextAsync(path, cancellationToken));
+            return cues.Count > 0 ? cues : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     private async Task<int> ProbeDurationsAsync(
         IReadOnlyCollection<QueueJob> jobs,
         UserSettings settings,
@@ -506,15 +705,17 @@ public sealed class JobQueueService(
                 var probe = await audioExtractor.ProbeAsync(job.SourcePath, settings, cancellationToken);
                 job.DurationSeconds = probe.Duration.TotalSeconds;
                 job.HasAudio = !string.IsNullOrWhiteSpace(probe.AudioCodec);
+                job.MediaProbeError = null;
                 Interlocked.Increment(ref updated);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
-            catch
+            catch (Exception exception)
             {
-                // Processing reports a full FFprobe error later; importing should remain non-blocking.
+                job.MediaProbeError = exception.Message;
+                Interlocked.Increment(ref updated);
             }
             finally { gate.Release(); }
         }));

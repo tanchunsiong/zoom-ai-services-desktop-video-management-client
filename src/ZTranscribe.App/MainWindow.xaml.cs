@@ -94,7 +94,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void JobsGrid_DoubleClick(object sender, MouseButtonEventArgs e) => await ReviewSelectedAsync(false);
+    private void FilterAll_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SetQueueMediaFilter(QueueMediaFilter.All);
+
+    private void FilterUnknownDuration_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SetQueueMediaFilter(QueueMediaFilter.UnknownDuration);
+
+    private void FilterWithoutAudio_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SetQueueMediaFilter(QueueMediaFilter.WithoutAudio);
+
+    private async void JobsGrid_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ViewModel.SelectedJob is { CanReview: true }) await ReviewSelectedAsync(false);
+        else PreviewSelected();
+    }
+    private void PreviewSelected_Click(object sender, RoutedEventArgs e) => PreviewSelected();
     private async void Review_Click(object sender, RoutedEventArgs e) => await ReviewSelectedAsync(false);
     private async void OriginalCaptions_Click(object sender, RoutedEventArgs e) => await ReviewSelectedAsync(false);
     private async void TranslatedCaptions_Click(object sender, RoutedEventArgs e) => await ReviewSelectedAsync(true);
@@ -230,6 +244,20 @@ public partial class MainWindow : Window
 
     private async void ReviewJobMenuItem_Click(object sender, RoutedEventArgs e) =>
         await ReviewSelectedAsync(false);
+
+    private void PreviewJobMenuItem_Click(object sender, RoutedEventArgs e) => PreviewSelected();
+
+    private void PreviewSelected()
+    {
+        if (ViewModel.SelectedJob is not { } job) return;
+        if (!File.Exists(job.SourcePath))
+        {
+            ShowError(new FileNotFoundException("The source media file is no longer available.", job.SourcePath));
+            return;
+        }
+
+        new MediaPreviewWindow(job) { Owner = this }.Show();
+    }
 
     private void JobsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {

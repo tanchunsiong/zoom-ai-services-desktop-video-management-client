@@ -102,6 +102,94 @@ Check("Generated outputs are source-named sidecars", () =>
         && paths.Summary == Path.Combine("C:\\media", "meeting.summary.md");
 });
 
+Check("Existing sidecars are discovered per task", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-existing-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var job = new QueueJob
+        {
+            SourcePath = Path.Combine(directory, "meeting.mp4"),
+            SourceLanguage = "en-US",
+            TranslationLanguage = "zh-CN",
+            Summarize = true
+        };
+        var paths = JobQueueService.OutputPathsFor(job);
+        File.WriteAllText(paths.OriginalVtt, "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello");
+        File.WriteAllText(paths.TranslatedVtt("zh-CN"), "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nNi hao");
+        File.WriteAllText(paths.Summary, "Summary");
+
+        var outputs = JobQueueService.ExistingOutputsFor(job);
+        var detected = JobQueueService.ApplyExistingOutputs(job, markComplete: true);
+        return outputs.OriginalVtt == paths.OriginalVtt
+            && outputs.TranslatedVtt == paths.TranslatedVtt("zh-CN")
+            && outputs.Summary == paths.Summary
+            && outputs.TranscriptJson is null
+            && detected
+            && job.ReuseExistingTranscript
+            && job.ReuseExistingTranslation
+            && job.ReuseExistingSummary
+            && job.State == JobState.Ready;
+    }
+    finally
+    {
+        Directory.Delete(directory, true);
+    }
+});
+
+Check("Empty and stale sidecars are not reused", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-stale-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var job = new QueueJob
+        {
+            SourcePath = Path.Combine(directory, "meeting.mp4"),
+            Summarize = true,
+            ExistingSummaryIsStale = true
+        };
+        var paths = JobQueueService.OutputPathsFor(job);
+        File.WriteAllText(paths.OriginalVtt, "This is not WebVTT content");
+        File.WriteAllText(paths.Summary, "Old summary");
+        var outputs = JobQueueService.ExistingOutputsFor(job);
+        return outputs.OriginalVtt is null && outputs.Summary is null;
+    }
+    finally
+    {
+        Directory.Delete(directory, true);
+    }
+});
+
+Check("Reused API tasks have zero estimated and actual cost", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "meeting.mp4",
+        SourceLanguage = "en-US",
+        TranslationLanguage = "zh-CN",
+        Summarize = true,
+        DurationSeconds = 60,
+        ReuseExistingTranscript = true,
+        ReuseExistingTranslation = true,
+        ReuseExistingSummary = true,
+        CompletedAt = DateTimeOffset.UtcNow
+    };
+    var comparison = JobCostEstimator.Compare(job, new UserSettings());
+    return comparison.Estimate.TotalUsd == 0m && comparison.Actual.TotalUsd == 0m;
+});
+
+Check("Probe failures are exposed in the duration tooltip", () =>
+{
+    var job = new QueueJob
+    {
+        SourcePath = "broken.wmv",
+        MediaProbeError = "ffprobe.exe failed: Invalid data found when processing input"
+    };
+    return job.DurationStatusLabel.Contains("Invalid data", StringComparison.Ordinal);
+});
+
 Check("Japanese pre-transcription translation estimate uses language-aware density", () =>
 {
     var job = new QueueJob

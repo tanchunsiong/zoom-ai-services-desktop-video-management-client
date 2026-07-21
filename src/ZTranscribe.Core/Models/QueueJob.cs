@@ -35,6 +35,11 @@ public sealed class QueueJob : INotifyPropertyChanged
     private long _summaryInputCharacters;
     private long _summaryOutputCharacters;
     private bool? _hasAudio;
+    private string? _mediaProbeError;
+    private bool _reuseExistingTranscript;
+    private bool _reuseExistingTranslation;
+    private bool _reuseExistingSummary;
+    private bool _existingSummaryIsStale;
     private UserSettings _costSettings = new();
 
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -73,6 +78,43 @@ public sealed class QueueJob : INotifyPropertyChanged
         {
             if (Set(ref _hasAudio, value)) NotifyCostChanged();
         }
+    }
+    public string? MediaProbeError
+    {
+        get => _mediaProbeError;
+        set
+        {
+            if (Set(ref _mediaProbeError, value)) OnPropertyChanged(nameof(DurationStatusLabel));
+        }
+    }
+    public bool ReuseExistingTranscript
+    {
+        get => _reuseExistingTranscript;
+        set
+        {
+            if (Set(ref _reuseExistingTranscript, value)) NotifyCostChanged();
+        }
+    }
+    public bool ReuseExistingTranslation
+    {
+        get => _reuseExistingTranslation;
+        set
+        {
+            if (Set(ref _reuseExistingTranslation, value)) NotifyCostChanged();
+        }
+    }
+    public bool ReuseExistingSummary
+    {
+        get => _reuseExistingSummary;
+        set
+        {
+            if (Set(ref _reuseExistingSummary, value)) NotifyCostChanged();
+        }
+    }
+    public bool ExistingSummaryIsStale
+    {
+        get => _existingSummaryIsStale;
+        set => Set(ref _existingSummaryIsStale, value);
     }
     public long TranscriptCharacters
     {
@@ -179,7 +221,11 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public string DurationStatusLabel => HasAudio == false
         ? "Media duration; no audio stream detected"
-        : DurationSeconds is null ? "Duration unavailable" : "Media duration";
+        : DurationSeconds is null
+            ? string.IsNullOrWhiteSpace(MediaProbeError)
+                ? "Duration unavailable"
+                : $"Duration unavailable: {MediaProbeError}"
+            : "Media duration";
     [JsonIgnore]
     public JobCostComparison CostComparison => JobCostEstimator.Compare(this, _costSettings);
     [JsonIgnore]

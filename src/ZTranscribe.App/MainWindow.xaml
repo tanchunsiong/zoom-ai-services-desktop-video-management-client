@@ -58,17 +58,28 @@
                         <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <TextBlock Text="{Binding QueueCountLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
                             <TextBlock Text="{Binding QueueDurationLabel}" Foreground="{StaticResource TextMuted}" Margin="0,5,0,0" HorizontalAlignment="Right"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                <Button Content="All" Style="{StaticResource QueueFilterButton}"
+                                        Tag="{Binding IsAllQueueFilter}" Click="FilterAll_Click"/>
+                                <Button Content="{Binding UnknownDurationFilterLabel}" Style="{StaticResource QueueFilterButton}"
+                                        Tag="{Binding IsUnknownDurationFilter}" IsEnabled="{Binding HasUnknownDurationJobs}"
+                                        Click="FilterUnknownDuration_Click"/>
+                                <Button Content="{Binding WithoutAudioFilterLabel}" Style="{StaticResource QueueFilterButton}"
+                                        Tag="{Binding IsWithoutAudioFilter}" IsEnabled="{Binding HasWithoutAudioJobs}"
+                                        Click="FilterWithoutAudio_Click"/>
+                            </StackPanel>
                             <TextBlock Text="{Binding LastAddedCountLabel}" Foreground="{StaticResource Accent}" Margin="0,5,0,0" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
                     <Border Grid.Row="1" Margin="0,20,0,14" Padding="14" Background="#18243A" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8">
                         <TextBlock Text="FFmpeg copies compatible audio streams; incompatible codecs are decoded to PCM WAV without resampling or remixing. Video is never uploaded." Foreground="#C5D0E4"/>
                     </Border>
-                    <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}"
+                    <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}"
                               IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
                               PreviewMouseRightButtonDown="JobsGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Preview media" Click="PreviewJobMenuItem_Click"/>
                                 <MenuItem Header="Review" Click="ReviewJobMenuItem_Click"
                                           Visibility="{Binding PlacementTarget.SelectedItem.CanReview, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibility}}"/>
                                 <MenuItem Header="Remove selected" Click="RemoveJobMenuItem_Click"/>
@@ -137,6 +148,18 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
+                                            <TextBlock Text="{Binding MediaProbeError}" TextWrapping="Wrap" Foreground="#F6C177" Margin="0,3,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding MediaProbeError}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -195,6 +218,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="Preview selected" Click="PreviewSelected_Click"/>
                         <Button Content="Review selected" Click="Review_Click"/>
                         <Button Content="Translate selected" Click="TranslateSelected_Click"/>
                         <Button Content="Summarize selected" Click="SummarizeSelected_Click"/>
