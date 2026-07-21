@@ -43,7 +43,11 @@ public sealed record MediaProbe(
     int SampleRate,
     int Channels,
     long? BitRate,
-    bool HasVideo);
+    bool HasVideo)
+{
+    // Absolute stream index used by FFmpeg when a container has multiple audio tracks.
+    public int AudioStreamIndex { get; init; } = -1;
+}
 
 public sealed record ApiCredentials(string ApiKey, string ApiSecret)
 {

@@ -327,6 +327,36 @@ Check("FFprobe accepts numeric and string fields", () =>
         && probe.Duration == TimeSpan.FromSeconds(123.5);
 });
 
+Check("FFprobe chooses the default audio track and falls back to stream duration", () =>
+{
+    var probe = FfmpegAudioExtractor.ParseProbe("""
+        {
+          "streams": [
+            { "index": 0, "codec_type": "video", "duration": "9.5" },
+            { "index": 1, "codec_type": "audio", "codec_name": "ac3", "sample_rate": 48000, "channels": 6, "duration": "9.5", "disposition": { "default": 0 } },
+            { "index": 2, "codec_type": "audio", "codec_name": "aac", "sample_rate": 48000, "channels": 2, "duration": "9.5", "disposition": { "default": 1 } }
+          ],
+          "format": { "duration": "N/A" }
+        }
+        """);
+    return probe.AudioCodec == "aac"
+        && probe.AudioStreamIndex == 2
+        && probe.Duration == TimeSpan.FromSeconds(9.5);
+});
+
+Check("Invalid FFprobe duration fails with an actionable error", () =>
+{
+    try
+    {
+        FfmpegAudioExtractor.ParseProbe("""{ "streams": [], "format": { "duration": "N/A" } }""");
+        return false;
+    }
+    catch (InvalidOperationException exception)
+    {
+        return exception.Message.Contains("valid positive media duration", StringComparison.Ordinal);
+    }
+});
+
 Check("Summarizer pre-transcript estimate is derived from media duration", () =>
 {
     var job = new QueueJob
@@ -384,6 +414,17 @@ Check("AC3 and arbitrary decodable codecs use PCM WAV compatibility extraction",
         && !ac3.StreamCopy;
 });
 
+Check("PCM and unknown-bitrate sources use safe PCM normalization", () =>
+{
+    var pcm = FfmpegAudioExtractor.ProfileFor("pcm_s24le");
+    var unknownBitrate = FfmpegAudioExtractor.NormalizeProfile(
+        new MediaProbe(TimeSpan.FromMinutes(2), "aac", 48_000, 2, null, true));
+    return !pcm.StreamCopy
+        && pcm.OutputCodec == "pcm_s16le"
+        && !unknownBitrate.StreamCopy
+        && unknownBitrate.Extension == "wav";
+});
+
 Check("PCM compatibility segments stay below the Zoom part limit", () =>
 {
     var probe = new MediaProbe(TimeSpan.FromHours(1), "ac3", 48_000, 6, 448_000, true);
@@ -401,6 +442,26 @@ Check("Multichannel audio is downmixed to a Zoom-compatible stereo stream", () =
     return FfmpegAudioExtractor.OutputChannelsFor(6) == 2
         && arguments.Contains("-ac")
         && arguments.Contains("2");
+});
+
+Check("Extraction maps the selected absolute audio stream and seeks after input", () =>
+{
+    var arguments = FfmpegAudioExtractor.BuildExtractionArguments(
+        "input file.mpg", "output.wav", TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8),
+        FfmpegAudioExtractor.ProfileFor("ac3"), 2, 2);
+    var argumentList = arguments.ToList();
+    var inputIndex = argumentList.IndexOf("-i");
+    var seekIndex = argumentList.IndexOf("-ss");
+    return arguments.Contains("0:2") && inputIndex >= 0 && seekIndex > inputIndex;
+});
+
+Check("Missing bitrate still gets a conservative PCM segment limit", () =>
+{
+    var probe = new MediaProbe(TimeSpan.FromHours(1), "mp3", 48_000, 2, null, false);
+    var segment = FfmpegAudioExtractor.SegmentDurationFor(
+        probe, FfmpegAudioExtractor.ProfileFor("mp3"), TimeSpan.FromMinutes(15));
+    var estimatedBytes = segment.TotalSeconds * probe.SampleRate * 2 * 2;
+    return estimatedBytes <= 40_000_000L;
 });
 
 Check("Stream-copy segments also target the conservative upload size", () =>
