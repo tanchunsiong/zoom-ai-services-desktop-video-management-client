@@ -9,7 +9,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
-- FFmpeg/FFprobe integration that selects the first audio stream. Zoom-compatible codecs use `-vn -c:a copy`; every other FFmpeg-decodable codec, including AC3 and WMA, is decoded to PCM WAV without resampling, channel remixing, or additional lossy compression.
+- FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to Zoom-compatible PCM WAV with a stereo downmix when needed.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Source-named `.vtt`, translated `.vtt`, transcript JSON, and summary sidecars written directly beside each source file without creating an output folder.
 - Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as a source-named `.summary.md` sidecar, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density, then includes a 10% contingency; actual cost continues to use measured API usage.
@@ -46,7 +46,7 @@ Supported stream-copy mappings are:
 | AAC / ALAC | M4A | copied unchanged |
 | MP3 | MP3 | copied unchanged |
 | PCM | WAV | copied unchanged |
-| Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM without resampling or remixing |
+| Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM and downmixed to mono/stereo when needed |
 
 Audio segments use a conservative 40 MB target to leave headroom below Zoom's documented 100 MB request limit and observed multipart gateway limits, including high-channel-count PCM audio. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 

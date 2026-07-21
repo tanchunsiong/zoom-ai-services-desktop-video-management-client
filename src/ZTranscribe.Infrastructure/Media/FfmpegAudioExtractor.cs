@@ -51,14 +51,23 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         if (string.IsNullOrWhiteSpace(probe.AudioCodec))
             throw new InvalidOperationException("The selected file has no audio stream to transcribe.");
         var profile = ProfileFor(probe.AudioCodec);
+        if (profile.StreamCopy && probe.Channels > 2)
+        {
+            profile = profile with
+            {
+                OutputCodec = profile.Extension == "mp3" ? "libmp3lame" : "aac",
+                StreamCopy = false
+            };
+        }
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);
         var requestedSegment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
         var segment = SegmentDurationFor(probe, profile, requestedSegment);
         var count = Math.Max(1, (int)Math.Ceiling(probe.Duration.TotalSeconds / segment.TotalSeconds));
         var parts = new List<PreparedAudioPart>(count);
+        var outputChannels = OutputChannelsFor(probe.Channels);
         if (!profile.StreamCopy)
-            job.StatusMessage = $"Decoding {probe.AudioCodec} to PCM WAV without resampling or remixing";
+            job.StatusMessage = $"Decoding {probe.AudioCodec} to {profile.Extension.ToUpperInvariant()} ({outputChannels} channels) for Scribe compatibility";
 
         for (var index = 0; index < count; index++)
         {
@@ -68,7 +77,7 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             var output = Path.Combine(workDirectory, $"audio-{index + 1:000}.{profile.Extension}");
             await ProcessRunner.RunAsync(
                 settings.FfmpegPath,
-                BuildExtractionArguments(job.SourcePath, output, start, duration, profile),
+                BuildExtractionArguments(job.SourcePath, output, start, duration, profile, outputChannels),
                 null,
                 cancellationToken);
 
@@ -104,7 +113,7 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         else
         {
             var sampleRate = probe.SampleRate > 0 ? probe.SampleRate : 48_000;
-            var channels = probe.Channels > 0 ? probe.Channels : 2;
+            var channels = OutputChannelsFor(probe.Channels);
             bytesPerSecond = checked((long)sampleRate * channels * 2L);
         }
         var maximumSeconds = Math.Max(1, UploadPartTargetBytes / bytesPerSecond);
@@ -116,14 +125,27 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         string output,
         TimeSpan start,
         TimeSpan duration,
-        AudioProfile profile) =>
-    [
-        "-hide_banner", "-nostdin", "-y",
-        "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-        "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
-        "-i", input,
-        "-map", "0:a:0", "-vn", "-c:a", profile.OutputCodec, output
-    ];
+        AudioProfile profile,
+        int outputChannels = 2)
+    {
+        var arguments = new List<string>
+        {
+            "-hide_banner", "-nostdin", "-y",
+            "-ss", start.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+            "-t", duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+            "-i", input,
+            "-map", "0:a:0", "-vn", "-c:a", profile.OutputCodec
+        };
+        if (!profile.StreamCopy)
+        {
+            arguments.Add("-ac");
+            arguments.Add(OutputChannelsFor(outputChannels).ToString(CultureInfo.InvariantCulture));
+        }
+        arguments.Add(output);
+        return arguments;
+    }
+
+    internal static int OutputChannelsFor(int channels) => Math.Clamp(channels, 1, 2);
 
     private static string GetString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) ? value.ValueKind switch

@@ -112,7 +112,7 @@
                             </Border>
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="AUDIO NORMALIZATION" FontFamily="{StaticResource DisplayFont}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Blue}"/>
-                                <TextBlock Text="FFmpeg copies compatible audio streams; incompatible codecs are decoded to PCM WAV without resampling or remixing. Video is never uploaded."
+                                <TextBlock Text="FFmpeg copies compatible mono/stereo streams; incompatible or multi-channel audio is decoded and downmixed to Zoom-compatible PCM WAV. Video is never uploaded."
                                            Foreground="{StaticResource TextPrimary}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </StackPanel>

@@ -368,8 +368,9 @@ Check("WMA uses PCM WAV compatibility extraction", () =>
         && profile.MimeType == "audio/wav"
         && !profile.StreamCopy
         && arguments.Contains("pcm_s16le")
-        && !arguments.Contains("-ar")
-        && !arguments.Contains("-ac");
+        && arguments.Contains("-ac")
+        && arguments.Contains("2")
+        && !arguments.Contains("-ar");
 });
 
 Check("AC3 and arbitrary decodable codecs use PCM WAV compatibility extraction", () =>
@@ -385,11 +386,21 @@ Check("AC3 and arbitrary decodable codecs use PCM WAV compatibility extraction",
 
 Check("PCM compatibility segments stay below the Zoom part limit", () =>
 {
-    var probe = new MediaProbe(TimeSpan.FromHours(1), "wmav2", 48_000, 2, 128_000, true);
-    var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
+    var probe = new MediaProbe(TimeSpan.FromHours(1), "ac3", 48_000, 6, 448_000, true);
+    var profile = FfmpegAudioExtractor.ProfileFor("ac3");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
-    var estimatedBytes = segment.TotalSeconds * probe.SampleRate * probe.Channels * 2;
+    var estimatedBytes = segment.TotalSeconds * probe.SampleRate * FfmpegAudioExtractor.OutputChannelsFor(probe.Channels) * 2;
     return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 40_000_000L;
+});
+
+Check("Multichannel audio is downmixed to a Zoom-compatible stereo stream", () =>
+{
+    var profile = FfmpegAudioExtractor.ProfileFor("ac3");
+    var arguments = FfmpegAudioExtractor.BuildExtractionArguments(
+        "input.mpg", "output.wav", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile, 6);
+    return FfmpegAudioExtractor.OutputChannelsFor(6) == 2
+        && arguments.Contains("-ac")
+        && arguments.Contains("2");
 });
 
 Check("Stream-copy segments also target the conservative upload size", () =>
