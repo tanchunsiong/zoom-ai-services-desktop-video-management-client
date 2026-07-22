@@ -18,7 +18,6 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Separate per-job and all-jobs processing-time estimates and actuals, itemized for Scribe, Translator, and Summarizer. Time estimates start as rough service-time heuristics and learn from completed jobs in the current queue, not provider SLAs; actuals are measured after a job completes.
 - Summary responses are normalized to remove overlapping duplicate subsections while preserving distinct Recap, Summary, and Action Items content.
 - Zoom API key and API secret stored in Windows Credential Manager, never in `settings.json` or the queue.
-- Windows GitHub Actions build and downloadable `win-x64` workflow artifact.
 
 ## Windows prerequisites
 
@@ -27,7 +26,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 3. FFmpeg and FFprobe. Install a reputable Windows distribution, then either add its `bin` directory to `PATH` or enter the full executable paths in Settings.
 4. Zoom Build API key and API secret with AI Services access.
 
-Compilation is validated locally and by the repository's Windows GitHub Actions workflow.
+Compilation is validated locally before changes are committed and pushed.
 
 ## Run from Visual Studio
 
