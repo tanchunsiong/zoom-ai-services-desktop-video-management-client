@@ -317,7 +317,7 @@ public partial class MainWindow : Window
         try
         {
             ViewModel.Notice = "Summarizing the existing transcript";
-            await ViewModel.Queue.SummarizeExistingAsync(job);
+            await ViewModel.Queue.SummarizeExistingAsync(job, force: true);
             ViewModel.Notice = job.StatusMessage;
         }
         catch (Exception exception) { ShowError(exception); }

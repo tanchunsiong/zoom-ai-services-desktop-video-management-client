@@ -228,7 +228,7 @@ public sealed class JobQueueService(
         }
     }
 
-    public async Task SummarizeExistingAsync(QueueJob job)
+    public async Task SummarizeExistingAsync(QueueJob job, bool force = false)
     {
         if (IsRunning) throw new InvalidOperationException("Wait for the active queue operation to finish.");
         if (!job.CanReview || !File.Exists(job.OriginalVttPath))
@@ -237,6 +237,12 @@ public sealed class JobQueueService(
             throw new InvalidOperationException("Choose Summarize in this job's queue row first.");
 
         ApplyExistingOutputs(job, markComplete: false);
+        if (force)
+        {
+            // An explicit rerun is allowed to replace an existing summary.
+            job.ReuseExistingSummary = false;
+        }
+
         if (job.ReuseExistingSummary)
         {
             job.Error = null;
