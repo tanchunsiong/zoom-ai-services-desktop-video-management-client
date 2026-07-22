@@ -23,11 +23,7 @@ public sealed class VlcPlaybackService : IDisposable
             PositionChanged?.Invoke(TimeSpan.FromMilliseconds(eventArgs.Time));
         MediaPlayer.LengthChanged += (_, eventArgs) =>
             DurationChanged?.Invoke(TimeSpan.FromMilliseconds(eventArgs.Length));
-        MediaPlayer.Playing += (_, _) =>
-        {
-            MediaPlayer.SetChannel(AudioOutputChannel.Stereo);
-            MediaPlayer.SetRate(_playbackRate);
-        };
+        MediaPlayer.Playing += (_, _) => MediaPlayer.SetRate(_playbackRate);
         MediaPlayer.EncounteredError += (_, _) =>
             PlaybackFailed?.Invoke("The media could not be played. Check that the file is still available and readable.");
     }
