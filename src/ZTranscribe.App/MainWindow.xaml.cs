@@ -65,9 +65,6 @@ public partial class MainWindow : Window
             else if (label == "Original captions") button.Content = IconLabel("\uE8A5", "Original");
             else if (label == "Translated captions") button.Content = IconLabel("\uE8FA", "Translated");
             else if (label == "Save settings") button.Content = IconLabel("\uE74E", "Save settings");
-            else if (label == "Start current") button.Content = IconLabel("\uE768", "Start");
-            else if (label == "End current") button.Content = IconLabel("\uE711", "End");
-            else if (label == "Retry") button.Content = IconLabel("\uE72C", "Retry");
         }
 
         foreach (var tab in FindVisualChildren<TabItem>(this))

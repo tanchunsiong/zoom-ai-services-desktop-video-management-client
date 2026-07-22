@@ -185,7 +185,7 @@
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="AutoGenerateColumns" Value="False"/>
             <Setter Property="CanUserResizeRows" Value="False"/>
-            <Setter Property="RowHeight" Value="64"/>
+            <Setter Property="RowHeight" Value="76"/>
             <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
             <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
         </Style>

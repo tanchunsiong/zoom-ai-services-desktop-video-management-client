@@ -112,7 +112,7 @@
                             </Border>
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="AUDIO NORMALIZATION" FontFamily="{StaticResource DisplayFont}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Blue}"/>
-                                <TextBlock Text="FFmpeg copies compatible mono/stereo streams; incompatible or multi-channel audio is decoded and downmixed to Zoom-compatible PCM WAV. Video is never uploaded."
+                                <TextBlock Text="FFmpeg copies compatible mono/stereo streams; incompatible or multi-channel audio is decoded and downmixed to a Zoom-compatible 128 kbps MP3. Video is never uploaded."
                                            Foreground="{StaticResource TextPrimary}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </StackPanel>
@@ -306,13 +306,28 @@
                             <DataGridTemplateColumn Header="Actions" Width="125">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="2">
-                                            <Button Content="Start current" Padding="8,4" Margin="0" Click="StartCurrent_Click"
-                                                    Visibility="{Binding CanStart, Converter={StaticResource BooleanToVisibility}}"/>
-                                            <Button Content="End current" Padding="8,4" Margin="0" Click="EndCurrent_Click"
-                                                    Visibility="{Binding CanEnd, Converter={StaticResource BooleanToVisibility}}"/>
-                                            <Button Content="Retry" Padding="8,4" Margin="0" Click="RetryCurrent_Click"
-                                                    Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibility}}"/>
+                                        <StackPanel Orientation="Horizontal" Margin="2" VerticalAlignment="Center">
+                                            <Button Padding="8,4" Margin="0" Click="StartCurrent_Click" ToolTip="Start this job"
+                                                    Visibility="{Binding CanStart, Converter={StaticResource BooleanToVisibility}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Start" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Padding="8,4" Margin="0" Click="EndCurrent_Click" ToolTip="End this job"
+                                                    Visibility="{Binding CanEnd, Converter={StaticResource BooleanToVisibility}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE711;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="End" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Padding="8,4" Margin="0" Click="RetryCurrent_Click" ToolTip="Retry this job"
+                                                    Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibility}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Retry" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
