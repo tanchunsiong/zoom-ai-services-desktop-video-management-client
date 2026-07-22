@@ -23,7 +23,7 @@
 
 - Missing FFmpeg and ffprobe paths.
 - Video without audio.
-- AC3, WMA, or another incompatible codec; confirm PCM WAV fallback preserves sample rate and channels and uses a 90,000,000-byte target per part below the 100 MB request limit.
+- AC3, WMA, or another incompatible codec; confirm PCM WAV fallback preserves sample rate and channels and uses an 80,000,000-byte target per part below the 100 MB request limit.
 - Force a successful, failed, and canceled Scribe call; confirm each converted part and its work directory are removed.
 - Invalid credentials / missing AI Services entitlement.
 - HTTP 429 and transient 5xx responses.

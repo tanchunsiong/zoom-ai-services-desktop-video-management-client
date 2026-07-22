@@ -50,7 +50,7 @@ Supported stream-copy mappings are:
 | PCM | WAV | copied unchanged |
 | Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM and downmixed to mono/stereo when needed |
 
-Audio segments target 90,000,000 bytes to leave a 10 MB headroom below Zoom's documented 100 MB request limit while using the available upload capacity, including for high-channel-count PCM audio. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
+Audio segments target 80,000,000 bytes to leave headroom below Zoom's documented 100 MB request limit while using more of the available upload capacity, including for high-channel-count PCM audio. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 
 Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is deleted immediately after its Scribe call succeeds or fails, and the job work directory is removed with retries after success, failure, or cancellation. Final outputs are source-named sidecars in the source file's directory, for example `meeting.vtt`, `meeting.translated-zh-CN.vtt`, `meeting.transcript.json`, and `meeting.summary.md`.
 
