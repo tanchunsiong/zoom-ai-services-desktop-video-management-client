@@ -400,7 +400,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        new MediaPreviewWindow(job) { Owner = this }.Show();
+        new MediaPreviewWindow(job, ViewModel.Settings) { Owner = this }.Show();
     }
 
     private void JobsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)

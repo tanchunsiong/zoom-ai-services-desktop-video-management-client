@@ -10,12 +10,14 @@ namespace ZTranscribe.App;
 public partial class MediaPreviewWindow : Window
 {
     private readonly QueueJob _job;
+    private readonly UserSettings _settings;
     private bool _updatingTimeline;
     public VlcPlaybackService Player { get; } = new();
 
-    public MediaPreviewWindow(QueueJob job)
+    public MediaPreviewWindow(QueueJob job, UserSettings settings)
     {
         _job = job;
+        _settings = settings;
         InitializeComponent();
         DataContext = this;
         Title = $"Z Scribe / Preview - {job.DisplayName}";
@@ -24,10 +26,10 @@ public partial class MediaPreviewWindow : Window
         Player.PositionChanged += Player_PositionChanged;
         Player.DurationChanged += Player_DurationChanged;
         Player.PlaybackFailed += Player_PlaybackFailed;
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
             ApplyIconography();
-            Player.Open(_job);
+            await Player.OpenAsync(_job, _settings);
         };
     }
 

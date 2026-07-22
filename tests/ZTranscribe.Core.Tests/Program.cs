@@ -558,6 +558,25 @@ Check("Multichannel audio is downmixed to a Zoom-compatible stereo stream", () =
         && arguments.Contains("2");
 });
 
+Check("Playback normalization follows probed codec and channel layout", () =>
+{
+    var ac3Stereo = new MediaProbe(TimeSpan.FromSeconds(30), "ac3", 48_000, 2, 256_000, true);
+    var ac3Surround = new MediaProbe(TimeSpan.FromSeconds(30), "ac3", 48_000, 6, 448_000, true)
+    {
+        AudioStreamIndex = 1
+    };
+    var aacStereo = new MediaProbe(TimeSpan.FromSeconds(30), "aac", 48_000, 2, 128_000, true);
+    var silentVideo = new MediaProbe(TimeSpan.FromSeconds(30), "", 0, 0, null, true);
+    var surroundArguments = FfmpegPlaybackResolver.BuildCompatibilityArguments("input.mpg", "output.mkv", ac3Surround);
+    return FfmpegPlaybackResolver.NeedsCompatibilityCopy(ac3Stereo)
+        && FfmpegPlaybackResolver.NeedsCompatibilityCopy(ac3Surround)
+        && !FfmpegPlaybackResolver.NeedsCompatibilityCopy(aacStereo)
+        && !FfmpegPlaybackResolver.NeedsCompatibilityCopy(silentVideo)
+        && surroundArguments.Contains("0:1")
+        && surroundArguments.Contains("pcm_s16le")
+        && surroundArguments.Contains("2");
+});
+
 Check("Extraction maps the selected absolute audio stream and seeks after input", () =>
 {
     var arguments = FfmpegAudioExtractor.BuildExtractionArguments(

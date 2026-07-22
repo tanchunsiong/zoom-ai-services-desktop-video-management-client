@@ -1,11 +1,14 @@
 using LibVLCSharp.Shared;
 using ZTranscribe.Core.Models;
+using ZTranscribe.Infrastructure.Media;
+using ZTranscribe.Infrastructure.Persistence;
 
 namespace ZTranscribe.App.Services;
 
 public sealed class VlcPlaybackService : IDisposable
 {
     private readonly LibVLC _libVlc;
+    private readonly FfmpegPlaybackResolver _playbackResolver;
     private Media? _media;
     private float _playbackRate = 1f;
     public MediaPlayer MediaPlayer { get; }
@@ -16,6 +19,7 @@ public sealed class VlcPlaybackService : IDisposable
 
     public VlcPlaybackService()
     {
+        _playbackResolver = new FfmpegPlaybackResolver(new AppPaths());
         LibVLCSharp.Shared.Core.Initialize();
         _libVlc = new LibVLC("--no-video-title-show", "--avcodec-hw=none");
         MediaPlayer = new MediaPlayer(_libVlc);
@@ -28,15 +32,32 @@ public sealed class VlcPlaybackService : IDisposable
             PlaybackFailed?.Invoke("The media could not be played. Check that the file is still available and readable.");
     }
 
-    public void Open(QueueJob job)
+    public async Task OpenAsync(
+        QueueJob job,
+        UserSettings settings,
+        CancellationToken cancellationToken = default)
     {
+        MediaPlayer.Stop();
         _media?.Dispose();
-        _media = new Media(_libVlc, job.SourcePath, FromType.FromPath);
-        CurrentJob = job;
-        PositionChanged?.Invoke(TimeSpan.Zero);
-        DurationChanged?.Invoke(TimeSpan.Zero);
-        if (!MediaPlayer.Play(_media))
-            PlaybackFailed?.Invoke("The media player could not start this file.");
+        _media = null;
+        CurrentJob = null;
+        try
+        {
+            var playbackPath = await _playbackResolver.ResolveAsync(job.SourcePath, settings, cancellationToken);
+            _media = new Media(_libVlc, playbackPath, FromType.FromPath);
+            CurrentJob = job;
+            PositionChanged?.Invoke(TimeSpan.Zero);
+            DurationChanged?.Invoke(TimeSpan.Zero);
+            if (!MediaPlayer.Play(_media))
+                PlaybackFailed?.Invoke("The media player could not start this file.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            PlaybackFailed?.Invoke($"Playback preparation failed: {exception.Message}");
+        }
     }
 
     public void Play() => MediaPlayer.Play();

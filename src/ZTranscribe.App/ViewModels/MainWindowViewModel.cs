@@ -266,7 +266,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         UpdatePlaybackDuration(TimeSpan.Zero);
         UpdatePlaybackPosition(TimeSpan.Zero);
         SelectedJob = job;
-        Player.Open(job);
+        await Player.OpenAsync(job, Settings);
         Notice = $"Reviewing {job.DisplayName}";
     }
 
