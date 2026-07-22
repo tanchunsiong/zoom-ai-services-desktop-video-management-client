@@ -4,6 +4,7 @@ using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
 using ZTranscribe.Infrastructure.Media;
 using ZTranscribe.Infrastructure.Persistence;
+using ZTranscribe.Infrastructure.Zoom;
 
 namespace ZTranscribe.Infrastructure.Queue;
 
@@ -630,6 +631,7 @@ public sealed class JobQueueService(
     internal static bool ApplyExistingOutputs(QueueJob job, bool markComplete)
     {
         var outputs = ExistingOutputsFor(job);
+        if (outputs.Summary is { } summaryPath) NormalizeSummarySidecar(summaryPath);
         job.OriginalVttPath = outputs.OriginalVtt;
         job.TranscriptJsonPath = outputs.TranscriptJson;
         job.TranslatedVttPath = outputs.TranslatedVtt;
@@ -658,6 +660,25 @@ public sealed class JobQueueService(
 
     private static bool NonEmptyFile(string path) =>
         File.Exists(path) && new FileInfo(path).Length > 0;
+
+    private static void NormalizeSummarySidecar(string path)
+    {
+        try
+        {
+            var original = File.ReadAllText(path);
+            var normalized = ZoomAiClient.NormalizeSummaryText(original);
+            if (!string.Equals(original, normalized, StringComparison.Ordinal))
+                File.WriteAllText(path, normalized);
+        }
+        catch (IOException)
+        {
+            // A locked sidecar can still be reused; cleanup will be retried next launch.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A protected sidecar can still be reused; cleanup will be retried next launch.
+        }
+    }
 
     private static bool ValidVttFile(string path)
     {
