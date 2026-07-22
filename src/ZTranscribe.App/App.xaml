@@ -199,6 +199,11 @@
             <Setter Property="Background" Value="{StaticResource Panel}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Style.Triggers>
+                <DataTrigger Binding="{Binding CanEnd}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource YellowSoft}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                    <Setter Property="BorderThickness" Value="4,0,0,0"/>
+                </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{StaticResource BlueSoft}"/>
                     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>

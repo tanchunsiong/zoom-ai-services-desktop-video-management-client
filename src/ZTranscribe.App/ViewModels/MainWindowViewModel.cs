@@ -63,6 +63,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ApiKey { get; private set; } = "";
     public bool IsQueueRunning => Queue.IsRunning;
     public bool IsQueueIdle => !Queue.IsRunning;
+    public QueueJob? ActiveJob => Jobs.FirstOrDefault(job => job.CanEnd);
     public string PauseResumeLabel => Queue.IsPaused ? "Resume" : "Pause";
     public string ActiveCaptionText
     {
@@ -362,6 +363,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             RaiseQueueCostProperties();
         if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio) or nameof(QueueJob.State))
             RefreshQueueFilter();
+        if (e.PropertyName == nameof(QueueJob.State))
+            OnPropertyChanged(nameof(ActiveJob));
     }
 
     private bool MatchesQueueFilter(QueueJob job) => _queueMediaFilter switch

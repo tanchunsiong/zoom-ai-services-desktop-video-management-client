@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -14,6 +15,7 @@ namespace ZTranscribe.App;
 
 public partial class MainWindow : Window
 {
+    private QueueJob? _lastAutoScrolledJob;
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".mpg", ".mpeg",
@@ -35,6 +37,7 @@ public partial class MainWindow : Window
         DataContext = viewModel;
         Loaded += (_, _) => ApplyMetroIconography();
         JobsGrid.ContextMenu.Opened += (_, _) => ApplyContextMenuIconography();
+        viewModel.PropertyChanged += ViewModel_PropertyChanged;
         viewModel.Player.PositionChanged += Player_PositionChanged;
         viewModel.Player.DurationChanged += Player_DurationChanged;
         viewModel.Player.PlaybackFailed += Player_PlaybackFailed;
@@ -77,6 +80,41 @@ public partial class MainWindow : Window
 
         ApplyGridIconography();
         ApplyContextMenuIconography();
+        ScrollActiveJobIntoView();
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainWindowViewModel.ActiveJob))
+            Dispatcher.BeginInvoke(ScrollActiveJobIntoView);
+    }
+
+    private void ScrollActiveJobIntoView()
+    {
+        var job = ViewModel.ActiveJob;
+        if (job is null)
+        {
+            _lastAutoScrolledJob = null;
+            return;
+        }
+        if (ReferenceEquals(job, _lastAutoScrolledJob) || !JobsGrid.Items.Contains(job)) return;
+
+        _lastAutoScrolledJob = job;
+        JobsGrid.ScrollIntoView(job);
+        JobsGrid.UpdateLayout();
+
+        var viewer = FindVisualChildren<ScrollViewer>(JobsGrid)
+            .FirstOrDefault(item => item.Name == "DG_ScrollViewer");
+        var index = JobsGrid.Items.IndexOf(job);
+        if (viewer is null || index < 0 || viewer.ViewportHeight <= 0) return;
+
+        var halfViewport = viewer.CanContentScroll
+            ? Math.Floor(viewer.ViewportHeight / 2)
+            : Math.Floor(viewer.ViewportHeight / Math.Max(1, JobsGrid.RowHeight) / 2);
+        var targetOffset = viewer.CanContentScroll
+            ? Math.Max(0, index - halfViewport)
+            : Math.Max(0, index * JobsGrid.RowHeight - viewer.ViewportHeight / 2 + JobsGrid.RowHeight / 2);
+        viewer.ScrollToVerticalOffset(targetOffset);
     }
 
     private void JobsGrid_Loaded(object sender, RoutedEventArgs e) => ApplyGridIconography();
@@ -512,6 +550,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.Player.PositionChanged -= Player_PositionChanged;
         ViewModel.Player.DurationChanged -= Player_DurationChanged;
         ViewModel.Player.PlaybackFailed -= Player_PlaybackFailed;
