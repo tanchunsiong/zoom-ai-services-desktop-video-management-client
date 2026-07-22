@@ -9,8 +9,14 @@ namespace ZTranscribe.Infrastructure.Media;
 public sealed partial class FfmpegAudioExtractor : IAudioExtractor
 {
     private const long ZoomPartLimitBytes = 100L * 1024L * 1024L;
+    private const long CompatibilityBitRate = 128_000L;
     internal const long UploadPartTargetBytes = 80_000_000L;
-    internal sealed record AudioProfile(string Extension, string MimeType, string OutputCodec, bool StreamCopy);
+    internal sealed record AudioProfile(
+        string Extension,
+        string MimeType,
+        string OutputCodec,
+        bool StreamCopy,
+        long? OutputBitRate = null);
 
     public async Task<MediaProbe> ProbeAsync(string inputPath, UserSettings settings, CancellationToken cancellationToken)
     {
@@ -118,18 +124,19 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
     {
         "aac" or "alac" => new("m4a", "audio/mp4", "copy", true),
         "mp3" => new("mp3", "audio/mpeg", "copy", true),
-        "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le" =>
-            new("wav", "audio/wav", "pcm_s16le", false),
-        _ => new("wav", "audio/wav", "pcm_s16le", false)
+        _ => CompatibilityProfile()
     };
 
     internal static AudioProfile NormalizeProfile(MediaProbe probe)
     {
         var profile = ProfileFor(probe.AudioCodec);
         return profile.StreamCopy && (probe.Channels > 2 || probe.BitRate is not > 0)
-            ? new AudioProfile("wav", "audio/wav", "pcm_s16le", false)
+            ? CompatibilityProfile()
             : profile;
     }
+
+    private static AudioProfile CompatibilityProfile() =>
+        new("mp3", "audio/mpeg", "libmp3lame", false, CompatibilityBitRate);
 
     internal static TimeSpan SegmentDurationFor(
         MediaProbe probe,
@@ -141,7 +148,11 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             throw new ArgumentOutOfRangeException(nameof(requested), "The segment duration must be positive.");
 
         long bytesPerSecond;
-        if (profile.StreamCopy && probe.BitRate is > 0)
+        if (profile.OutputBitRate is > 0)
+        {
+            bytesPerSecond = Math.Max(1, profile.OutputBitRate.Value / 8);
+        }
+        else if (profile.StreamCopy && probe.BitRate is > 0)
         {
             bytesPerSecond = Math.Max(1, probe.BitRate.Value / 8);
         }
@@ -176,6 +187,11 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         {
             arguments.Add("-ac");
             arguments.Add(OutputChannelsFor(outputChannels).ToString(CultureInfo.InvariantCulture));
+            if (profile.OutputBitRate is > 0)
+            {
+                arguments.Add("-b:a");
+                arguments.Add($"{profile.OutputBitRate.Value / 1000}k");
+            }
         }
         arguments.Add(output);
         return arguments;

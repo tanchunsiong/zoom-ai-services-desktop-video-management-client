@@ -24,24 +24,15 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         ApiCredentials credentials,
         CancellationToken cancellationToken)
     {
-        using var response = await SendWithRetryAsync(async () =>
+        using var response = await SendWithRetryAsync(() =>
         {
             var request = Authorized(HttpMethod.Post, ScribeUri, credentials);
-            var multipart = new MultipartFormDataContent();
-            var stream = File.OpenRead(part.Path);
-            var file = new StreamContent(stream);
-            file.Headers.ContentType = MediaTypeHeaderValue.Parse(part.MimeType);
-            multipart.Add(file, "file", Path.GetFileName(part.Path));
-            multipart.Add(new StringContent(JsonSerializer.Serialize(new
+            request.Content = new DataUriJsonContent(part.Path, part.MimeType, new
             {
                 language,
-                word_time_offsets = true,
-                channel_separation = false,
-                timestamps = true,
-                output_format = "json"
-            }), Encoding.UTF8), "config");
-            request.Content = multipart;
-            return request;
+                channel_separation = false
+            });
+            return Task.FromResult(request);
         }, cancellationToken);
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);

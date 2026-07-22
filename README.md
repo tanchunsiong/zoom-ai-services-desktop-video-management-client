@@ -9,7 +9,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
-- FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to Zoom-compatible PCM WAV with a stereo downmix when needed.
+- FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to a Zoom-compatible 128 kbps MP3 with a stereo downmix when needed.
 - Long-media segmentation into 15-minute audio-only parts, two concurrent Scribe calls by default, and restored original-timeline timestamps.
 - Source-named `.vtt`, translated `.vtt`, transcript JSON, and summary sidecars written directly beside each source file without creating an output folder.
 - Row-level Zoom Summarizer output is enabled by default, can be disabled per job, is saved as a source-named `.summary.md` sidecar, and is shown in the Review panel. Before transcription, its estimate is derived from media duration and language-aware character density, then includes a 10% contingency; actual cost continues to use measured API usage.
@@ -47,10 +47,9 @@ Supported stream-copy mappings are:
 |---|---|---|
 | AAC / ALAC | M4A | copied unchanged |
 | MP3 | MP3 | copied unchanged |
-| PCM | WAV | copied unchanged |
-| Every other FFmpeg-decodable codec, including AC3 and WMA | WAV | decoded to 16-bit PCM and downmixed to mono/stereo when needed |
+| PCM and every other FFmpeg-decodable codec, including AC3 and WMA | MP3 | encoded at 128 kbps and downmixed to mono/stereo when needed |
 
-Audio segments target 80,000,000 bytes to leave headroom below Zoom's documented 100 MB request limit while using more of the available upload capacity, including for high-channel-count PCM audio. If the gateway still returns HTTP 413, the queue automatically halves the target and retries the audio parts. This changes the storage encoding for fallback codecs but does not apply another lossy codec, resample the waveform, or alter the channel layout. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
+Audio segments target 80,000,000 raw file bytes. Scribe uploads follow Zoom's [official AI Services quickstart](https://github.com/zoom/AI-Services-Quickstart/) request shape: an `application/json` body containing a Base64 data URI. Base64 increases the HTTP body by about one third, so the extractor uses compact 128 kbps MP3 for codecs that cannot be copied directly. If the gateway still returns HTTP 413, the queue automatically halves the target and retries the audio parts. Compatibility encoding is lossy but preserves speech well while avoiding unsupported containers and oversized PCM uploads. A source that FFmpeg cannot decode, is encrypted, is corrupt, or has no audio stream still cannot be processed.
 
 Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is deleted immediately after its Scribe call succeeds or fails, and the job work directory is removed with retries after success, failure, or cancellation. Final outputs are source-named sidecars in the source file's directory, for example `meeting.vtt`, `meeting.translated-zh-CN.vtt`, `meeting.transcript.json`, and `meeting.summary.md`.
 

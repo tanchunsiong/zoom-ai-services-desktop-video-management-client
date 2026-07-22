@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
 using ZTranscribe.Infrastructure.Media;
@@ -14,6 +15,38 @@ if (args is ["--wait-for-cancellation", var markerPath])
 }
 
 var failures = new List<string>();
+
+await CheckAsync("Scribe JSON upload matches the official data URI shape", async () =>
+{
+    var path = Path.Combine(Path.GetTempPath(), $"ztranscribe-upload-{Guid.NewGuid():N}.bin");
+    var expected = new byte[] { 0, 1, 2, 127, 128, 254, 255 };
+    await File.WriteAllBytesAsync(path, expected);
+    try
+    {
+        using var content = new DataUriJsonContent(path, "audio/wav", new
+        {
+            language = "en-US",
+            channel_separation = false
+        });
+        await using var output = new MemoryStream();
+        await content.CopyToAsync(output);
+        var body = output.ToArray();
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        var file = root.GetProperty("file").GetString() ?? "";
+        var encoded = file["data:audio/wav;base64,".Length..];
+        return content.Headers.ContentType?.MediaType == "application/json"
+            && content.Headers.ContentLength == body.LongLength
+            && file.StartsWith("data:audio/wav;base64,", StringComparison.Ordinal)
+            && Convert.FromBase64String(encoded).SequenceEqual(expected)
+            && root.GetProperty("config").GetProperty("language").GetString() == "en-US"
+            && !root.GetProperty("config").GetProperty("channel_separation").GetBoolean();
+    }
+    finally
+    {
+        File.Delete(path);
+    }
+});
 
 Check("VTT round trip", () =>
 {
@@ -503,56 +536,59 @@ Check("No-audio media has zero estimated Scribe cost", () =>
     return JobCostEstimator.Compare(job, new UserSettings()).Estimate.ScribeUsd == 0m;
 });
 
-Check("WMA uses PCM WAV compatibility extraction", () =>
+Check("WMA uses compressed MP3 compatibility extraction", () =>
 {
     var profile = FfmpegAudioExtractor.ProfileFor("wmav2");
     var arguments = FfmpegAudioExtractor.BuildExtractionArguments(
-        "input.wmv", "output.wav", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile);
-    return profile.Extension == "wav"
-        && profile.MimeType == "audio/wav"
+        "input.wmv", "output.mp3", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile);
+    return profile.Extension == "mp3"
+        && profile.MimeType == "audio/mpeg"
         && !profile.StreamCopy
-        && arguments.Contains("pcm_s16le")
+        && arguments.Contains("libmp3lame")
         && arguments.Contains("-ac")
         && arguments.Contains("2")
+        && arguments.Contains("-b:a")
+        && arguments.Contains("128k")
         && !arguments.Contains("-ar");
 });
 
-Check("AC3 and arbitrary decodable codecs use PCM WAV compatibility extraction", () =>
+Check("AC3 and arbitrary decodable codecs use compressed MP3 compatibility extraction", () =>
 {
     var ac3 = FfmpegAudioExtractor.ProfileFor("ac3");
     var unknown = FfmpegAudioExtractor.ProfileFor("future_codec");
     return ac3 == unknown
-        && ac3.Extension == "wav"
-        && ac3.MimeType == "audio/wav"
-        && ac3.OutputCodec == "pcm_s16le"
+        && ac3.Extension == "mp3"
+        && ac3.MimeType == "audio/mpeg"
+        && ac3.OutputCodec == "libmp3lame"
+        && ac3.OutputBitRate == 128_000
         && !ac3.StreamCopy;
 });
 
-Check("PCM and unknown-bitrate sources use safe PCM normalization", () =>
+Check("PCM and unknown-bitrate sources use compressed compatibility normalization", () =>
 {
     var pcm = FfmpegAudioExtractor.ProfileFor("pcm_s24le");
     var unknownBitrate = FfmpegAudioExtractor.NormalizeProfile(
         new MediaProbe(TimeSpan.FromMinutes(2), "aac", 48_000, 2, null, true));
     return !pcm.StreamCopy
-        && pcm.OutputCodec == "pcm_s16le"
+        && pcm.OutputCodec == "libmp3lame"
         && !unknownBitrate.StreamCopy
-        && unknownBitrate.Extension == "wav";
+        && unknownBitrate.Extension == "mp3";
 });
 
-Check("PCM compatibility segments stay below the Zoom part limit", () =>
+Check("Compressed compatibility segments stay below the Zoom part limit", () =>
 {
     var probe = new MediaProbe(TimeSpan.FromHours(1), "ac3", 48_000, 6, 448_000, true);
     var profile = FfmpegAudioExtractor.ProfileFor("ac3");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
-    var estimatedBytes = segment.TotalSeconds * probe.SampleRate * FfmpegAudioExtractor.OutputChannelsFor(probe.Channels) * 2;
-    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= FfmpegAudioExtractor.UploadPartTargetBytes;
+    var estimatedBytes = segment.TotalSeconds * profile.OutputBitRate / 8;
+    return segment == TimeSpan.FromMinutes(15) && estimatedBytes <= FfmpegAudioExtractor.UploadPartTargetBytes;
 });
 
 Check("Multichannel audio is downmixed to a Zoom-compatible stereo stream", () =>
 {
     var profile = FfmpegAudioExtractor.ProfileFor("ac3");
     var arguments = FfmpegAudioExtractor.BuildExtractionArguments(
-        "input.mpg", "output.wav", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile, 6);
+        "input.mpg", "output.mp3", TimeSpan.Zero, TimeSpan.FromMinutes(5), profile, 6);
     return FfmpegAudioExtractor.OutputChannelsFor(6) == 2
         && arguments.Contains("-ac")
         && arguments.Contains("2");
