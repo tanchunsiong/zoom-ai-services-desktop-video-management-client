@@ -43,6 +43,7 @@ public sealed class QueueJob : INotifyPropertyChanged
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _completedAt;
     private UserSettings _costSettings = new();
+    private JobTimeCalibration _timeCalibration = JobTimeCalibration.Default;
 
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string SourcePath { get; init; }
@@ -264,7 +265,7 @@ public sealed class QueueJob : INotifyPropertyChanged
     [JsonIgnore]
     public JobCostComparison CostComparison => JobCostEstimator.Compare(this, _costSettings);
     [JsonIgnore]
-    public JobTimeComparison TimeComparison => JobTimeEstimator.Compare(this, _costSettings);
+    public JobTimeComparison TimeComparison => JobTimeEstimator.Compare(this, _costSettings, _timeCalibration);
     [JsonIgnore]
     public string EstimatedScribeCostLabel => JobCostEstimator.FormatUsd(CostComparison.Estimate.ScribeUsd);
     [JsonIgnore]
@@ -303,6 +304,12 @@ public sealed class QueueJob : INotifyPropertyChanged
     public void ConfigureCostEstimate(UserSettings settings)
     {
         _costSettings = settings;
+        NotifyCostChanged();
+    }
+
+    public void ConfigureTimeCalibration(JobTimeCalibration calibration)
+    {
+        _timeCalibration = calibration;
         NotifyCostChanged();
     }
 

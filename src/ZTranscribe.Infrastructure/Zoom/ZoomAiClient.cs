@@ -101,7 +101,10 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
 
         var chunks = SplitUtf8(text, SummaryChunkBytes);
         if (chunks.Count == 1)
-            return await SummarizeTextAsync(chunks[0], language, "full_summary", credentials, cancellationToken);
+        {
+            var single = await SummarizeTextAsync(chunks[0], language, "full_summary", credentials, cancellationToken);
+            return single with { Text = NormalizeSummaryText(single.Text) };
+        }
 
         long inputCharacters = 0;
         long outputCharacters = 0;
@@ -134,9 +137,63 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         var final = await SummarizeTextAsync(combined, language, "full_summary", credentials, cancellationToken);
         return final with
         {
+            Text = NormalizeSummaryText(final.Text),
             InputCharacters = inputCharacters + final.InputCharacters,
             OutputCharacters = outputCharacters + final.OutputCharacters
         };
+    }
+
+    public static string NormalizeSummaryText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+
+        var lines = text.Replace("\r\n", "\n").Split('\n').ToList();
+        var summaryStart = lines.FindIndex(line => Regex.IsMatch(line, @"^\s*#\s+Summary\s*$", RegexOptions.IgnoreCase));
+        if (summaryStart < 0) return string.Join("\n", lines).Trim();
+
+        var summaryEnd = lines.FindIndex(summaryStart + 1,
+            line => Regex.IsMatch(line, @"^\s*#\s+\S", RegexOptions.IgnoreCase));
+        if (summaryEnd < 0) summaryEnd = lines.Count;
+
+        var sectionStarts = Enumerable.Range(summaryStart + 1, summaryEnd - summaryStart - 1)
+            .Where(index => Regex.IsMatch(lines[index], @"^\s*#{2,}\s+\S", RegexOptions.IgnoreCase))
+            .ToArray();
+        if (sectionStarts.Length < 2) return string.Join("\n", lines).Trim();
+
+        var sections = new List<SummarySection>();
+        for (var index = 0; index < sectionStarts.Length; index++)
+        {
+            var start = sectionStarts[index];
+            var end = index + 1 < sectionStarts.Length ? sectionStarts[index + 1] : summaryEnd;
+            var heading = lines[start].Trim();
+            var body = string.Join("\n", lines.Skip(start + 1).Take(end - start - 1)).Trim();
+            if (string.IsNullOrWhiteSpace(body)) continue;
+
+            var duplicate = sections.FindIndex(existing =>
+                NormalizeHeading(existing.Heading) == NormalizeHeading(heading) ||
+                WordSimilarity(existing.Body, body) >= 0.70);
+            if (duplicate < 0)
+            {
+                sections.Add(new SummarySection(heading, body));
+                continue;
+            }
+
+            if (body.Length > sections[duplicate].Body.Length)
+                sections[duplicate] = new SummarySection(heading, body);
+        }
+
+        if (sections.Count == 0) return string.Join("\n", lines).Trim();
+        var rebuilt = new List<string>();
+        rebuilt.AddRange(lines.Take(summaryStart + 1));
+        rebuilt.Add("");
+        foreach (var section in sections)
+        {
+            rebuilt.Add(section.Heading);
+            rebuilt.Add(section.Body);
+            rebuilt.Add("");
+        }
+        rebuilt.AddRange(lines.Skip(summaryEnd));
+        return string.Join("\n", rebuilt).Trim();
     }
 
     public async Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken)
@@ -212,8 +269,8 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         var root = document.RootElement;
         var result = root.GetProperty("result");
         var summary = task == "full_summary"
-            ? FirstString(result, "full_summary", "summary_text", "recap")
-            : FirstString(result, "summary_text", "full_summary", "recap");
+            ? FirstString(result, "full_summary", "summary_text", "text", "recap")
+            : FirstString(result, "summary_text", "text", "full_summary", "recap");
         long inputCharacters = text.Length;
         long outputCharacters = summary.Length;
         if (root.TryGetProperty("usage", out var usage))
@@ -351,6 +408,26 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
     }
 
     private static string Flatten(string text) => string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static string NormalizeHeading(string heading) =>
+        Regex.Replace(heading.ToLowerInvariant(), @"[^\p{L}\p{N}]+", " ").Trim();
+
+    private static double WordSimilarity(string first, string second)
+    {
+        var firstWords = Words(first);
+        var secondWords = Words(second);
+        if (firstWords.Count == 0 || secondWords.Count == 0) return 0;
+        var intersection = firstWords.Intersect(secondWords).Count();
+        var union = firstWords.Union(secondWords).Count();
+        return union == 0 ? 0 : intersection / (double)union;
+    }
+
+    private static HashSet<string> Words(string text) =>
+        Regex.Matches(text.ToLowerInvariant(), @"[\p{L}\p{N}]{3,}")
+            .Select(match => match.Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private sealed record SummarySection(string Heading, string Body);
 
     [GeneratedRegex(@"\[\[\[\s*ZT_CUE_(\d{6})\s*\]\]\]\s*([\s\S]*?)(?=\s*\[\[\[\s*ZT_CUE_\d{6}\s*\]\]\]|$)")]
     private static partial Regex CuePattern();

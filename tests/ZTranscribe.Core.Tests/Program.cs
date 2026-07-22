@@ -4,6 +4,7 @@ using ZTranscribe.Core.Services;
 using ZTranscribe.Infrastructure.Media;
 using ZTranscribe.Infrastructure.Persistence;
 using ZTranscribe.Infrastructure.Queue;
+using ZTranscribe.Infrastructure.Zoom;
 
 if (args is ["--wait-for-cancellation", var markerPath])
 {
@@ -121,6 +122,80 @@ Check("Processing time actuals measure contiguous queue stages", () =>
         && actual.Translate == TimeSpan.Zero
         && actual.Summarize == TimeSpan.Zero
         && actual.Total == TimeSpan.FromSeconds(7);
+});
+
+Check("Processing time estimates learn from completed jobs", () =>
+{
+    var firstStarted = DateTimeOffset.UtcNow.AddMinutes(-2);
+    var first = new QueueJob
+    {
+        SourcePath = "first.mp4",
+        DurationSeconds = 60,
+        TranscriptCharacters = 10_000,
+        SummaryInputCharacters = 10_000,
+        Summarize = true,
+        StartedAt = firstStarted,
+        CompletedAt = firstStarted.AddSeconds(20)
+    };
+    first.Events.Add(new JobEvent(firstStarted, JobState.Preparing, "Preparing"));
+    first.Events.Add(new JobEvent(firstStarted.AddSeconds(2), JobState.Transcribing, "Transcribing"));
+    first.Events.Add(new JobEvent(firstStarted.AddSeconds(12), JobState.Summarizing, "Summarizing"));
+    first.Events.Add(new JobEvent(firstStarted.AddSeconds(20), JobState.Ready, "Ready"));
+
+    var secondStarted = DateTimeOffset.UtcNow.AddMinutes(-1);
+    var second = new QueueJob
+    {
+        SourcePath = "second.mp4",
+        DurationSeconds = 120,
+        TranscriptCharacters = 20_000,
+        SummaryInputCharacters = 20_000,
+        Summarize = true,
+        StartedAt = secondStarted,
+        CompletedAt = secondStarted.AddSeconds(24)
+    };
+    second.Events.Add(new JobEvent(secondStarted, JobState.Preparing, "Preparing"));
+    second.Events.Add(new JobEvent(secondStarted.AddSeconds(4), JobState.Transcribing, "Transcribing"));
+    second.Events.Add(new JobEvent(secondStarted.AddSeconds(14), JobState.Summarizing, "Summarizing"));
+    second.Events.Add(new JobEvent(secondStarted.AddSeconds(24), JobState.Ready, "Ready"));
+
+    var calibration = JobTimeCalibration.Learn([first, second]);
+    var pending = new QueueJob
+    {
+        SourcePath = "pending.mp4",
+        DurationSeconds = 180,
+        TranscriptCharacters = 15_000,
+        Summarize = true
+    };
+    var estimate = JobTimeEstimator.Compare(pending, new UserSettings(), calibration).Estimate;
+    return calibration.Scribe.SampleCount == 2
+        && calibration.Summarize.SampleCount == 2
+        && estimate.Scribe is { TotalSeconds: < 30 }
+        && estimate.Summarize is { TotalSeconds: < 12 };
+});
+
+Check("Summary normalization removes overlapping subsections", () =>
+{
+    const string noisy = """
+        # Recap
+        One recap.
+
+        # Summary
+        ## Topic
+        The same discussion explains the selection process and the meeting ends without a decision.
+
+        ## Topic
+        The same discussion explains the selection process and the meeting ends without a decision.
+
+        ## Other topic
+        A separate point about the next presentation.
+
+        # Action Items
+        - Review the proposal.
+        """;
+    var clean = ZoomAiClient.NormalizeSummaryText(noisy);
+    return clean.Split("## Topic", StringSplitOptions.None).Length - 1 == 1
+        && clean.Contains("## Other topic", StringComparison.Ordinal)
+        && clean.Contains("# Action Items", StringComparison.Ordinal);
 });
 
 Check("Queue duration labels use hours minutes and seconds", () =>

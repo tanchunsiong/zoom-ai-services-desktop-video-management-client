@@ -168,7 +168,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         try { await Queue.InitializeAsync(); }
         finally { _isInitializing = false; }
         RefreshQueueFilter();
-        RaiseQueueCostProperties();
+        RefreshTimeCalibration();
         Notice = HasCredentials ? $"{Jobs.Count} job{(Jobs.Count == 1 ? "" : "s")} in the library" :
             "Add Zoom Build credentials in Settings before starting the queue";
         OnPropertyChanged(nameof(Settings));
@@ -183,7 +183,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             _isInitializing = false;
             RefreshQueueFilter();
-            RaiseQueueCostProperties();
+            RefreshTimeCalibration();
         }
     }
 
@@ -232,7 +232,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             _isInitializing = false;
             RefreshQueueFilter();
-            RaiseQueueCostProperties();
+            RefreshTimeCalibration();
         }
     }
 
@@ -347,14 +347,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         if (!_isInitializing)
         {
             RefreshQueueFilter();
-            RaiseQueueCostProperties();
+            RefreshTimeCalibration();
         }
     }
 
     private void Job_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_isInitializing) return;
-        if (e.PropertyName is nameof(QueueJob.CostComparison) or nameof(QueueJob.TimeComparison)) RaiseQueueCostProperties();
+        if (e.PropertyName == nameof(QueueJob.CompletedAt))
+            RefreshTimeCalibration();
+        else if (e.PropertyName is nameof(QueueJob.CostComparison) or nameof(QueueJob.TimeComparison))
+            RaiseQueueCostProperties();
         if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio))
             RefreshQueueFilter();
     }
@@ -405,6 +408,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ActualQueueTranslateTimeLabel));
         OnPropertyChanged(nameof(ActualQueueSummaryTimeLabel));
         OnPropertyChanged(nameof(ActualQueueTotalTimeLabel));
+    }
+
+    private void RefreshTimeCalibration()
+    {
+        var calibration = JobTimeCalibration.Learn(Jobs);
+        var wasInitializing = _isInitializing;
+        _isInitializing = true;
+        try
+        {
+            foreach (var job in Jobs) job.ConfigureTimeCalibration(calibration);
+        }
+        finally
+        {
+            _isInitializing = wasInitializing;
+        }
+        RaiseQueueCostProperties();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
