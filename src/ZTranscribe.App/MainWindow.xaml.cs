@@ -120,6 +120,8 @@ public partial class MainWindow : Window
             {
                 "Preview media" => GlyphBlock("\uE7B3"),
                 "Review" => GlyphBlock("\uE8A5"),
+                "Retry" => GlyphBlock("\uE72C"),
+                "Retry all failed" => GlyphBlock("\uE72C"),
                 "Remove selected" => GlyphBlock("\uE738"),
                 _ => item.Icon
             };
@@ -295,6 +297,37 @@ public partial class MainWindow : Window
             ViewModel.Notice = $"Retrying {job.DisplayName}";
             await ViewModel.Queue.StartJobAsync(job);
             ViewModel.Notice = job.StatusMessage;
+        }
+        catch (Exception exception) { ShowError(exception); }
+    }
+
+    private async void RetryJobMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedJob is not { CanRetry: true } job) return;
+        try
+        {
+            await ViewModel.Queue.RetryAsync(job);
+            ViewModel.Notice = $"Retrying {job.DisplayName}";
+            await ViewModel.Queue.StartJobAsync(job);
+            ViewModel.Notice = job.StatusMessage;
+        }
+        catch (Exception exception) { ShowError(exception); }
+    }
+
+    private async void RetryAllFailedMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var count = await ViewModel.Queue.RetryAllFailedAsync();
+            if (count == 0)
+            {
+                ViewModel.Notice = "There are no failed jobs to retry";
+                return;
+            }
+
+            ViewModel.Notice = $"Retrying {count:N0} failed job{(count == 1 ? "" : "s")}";
+            await ViewModel.Queue.StartAsync();
+            ViewModel.Notice = "Retry all failed completed";
         }
         catch (Exception exception) { ShowError(exception); }
     }

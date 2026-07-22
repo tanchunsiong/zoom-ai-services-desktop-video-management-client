@@ -29,7 +29,8 @@ public interface IAudioExtractor
         string workDirectory,
         UserSettings settings,
         IProgress<double>? progress,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        long? uploadTargetBytes = null);
 }
 
 public interface IZoomAiClient

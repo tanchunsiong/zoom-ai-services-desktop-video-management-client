@@ -72,11 +72,17 @@ public sealed class JobQueueService(
 
     public async Task RetryAsync(QueueJob job)
     {
-        job.Error = null;
-        job.StartedAt = null;
-        job.CompletedAt = null;
-        job.Report(JobState.Queued, 0, "Queued to retry");
+        QueueForRetry(job);
         await SaveAsync();
+    }
+
+    public async Task<int> RetryAllFailedAsync()
+    {
+        if (IsRunning) throw new InvalidOperationException("Wait for the active queue operation to finish.");
+        var failed = Jobs.Where(job => job.CanRetry).ToArray();
+        foreach (var job in failed) QueueForRetry(job);
+        if (failed.Length > 0) await SaveAsync();
+        return failed.Length;
     }
 
     public async Task UpdateSourceLanguageAsync(QueueJob job, string sourceLanguage)
@@ -371,6 +377,14 @@ public sealed class JobQueueService(
         ResetPause();
     }
 
+    private static void QueueForRetry(QueueJob job)
+    {
+        job.Error = null;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        job.Report(JobState.Queued, 0, "Queued to retry");
+    }
+
     public void Pause()
     {
         if (!IsRunning || IsPaused) return;
@@ -435,31 +449,8 @@ public sealed class JobQueueService(
             await SaveAsync();
             var extractionProgress = new Progress<double>(value =>
                 job.Progress = 4 + (int)Math.Round(value * 16));
-            var parts = await audioExtractor.ExtractAsync(job, work, settings, extractionProgress, cancellationToken);
-
-            job.Report(JobState.Transcribing, 22, $"Transcribing {parts.Count} audio part{(parts.Count == 1 ? "" : "s")}");
-            await SaveAsync();
-            var documents = new TranscriptDocument[parts.Count];
-            using (var gate = new SemaphoreSlim(Math.Clamp(settings.ScribeConcurrency, 1, 4)))
-            {
-                var completed = 0;
-                await Task.WhenAll(parts.Select(async part =>
-                {
-                    await gate.WaitAsync(cancellationToken);
-                    try
-                    {
-                        documents[part.Index] = await zoom.TranscribeAsync(part, job.SourceLanguage, credentials, cancellationToken);
-                        var done = Interlocked.Increment(ref completed);
-                        job.Progress = 22 + (int)Math.Round(done / (double)parts.Count * 53);
-                        job.StatusMessage = $"Transcribed {done} of {parts.Count} parts";
-                    }
-                    finally
-                    {
-                        gate.Release();
-                        await WorkFileCleaner.DeleteFileAsync(part.Path);
-                    }
-                }));
-            }
+            var (parts, documents) = await TranscribeWithAdaptivePartsAsync(
+                job, work, settings, credentials, extractionProgress, cancellationToken);
 
             var originalCues = documents.SelectMany((document, index) =>
                     document.Cues.Select(cue => cue.OffsetBy(parts[index].TimelineStart)))
@@ -494,6 +485,61 @@ public sealed class JobQueueService(
                 job.Error = string.IsNullOrWhiteSpace(job.Error) ? cleanupError : $"{job.Error}{Environment.NewLine}{cleanupError}";
             }
             await SaveAsync();
+        }
+    }
+
+    private async Task<(IReadOnlyList<PreparedAudioPart> Parts, TranscriptDocument[] Documents)> TranscribeWithAdaptivePartsAsync(
+        QueueJob job,
+        string work,
+        UserSettings settings,
+        ApiCredentials credentials,
+        IProgress<double> extractionProgress,
+        CancellationToken cancellationToken)
+    {
+        long? uploadTargetBytes = null;
+        while (true)
+        {
+            var parts = await audioExtractor.ExtractAsync(
+                job, work, settings, extractionProgress, cancellationToken, uploadTargetBytes);
+            job.Report(JobState.Transcribing, 22,
+                $"Transcribing {parts.Count} audio part{(parts.Count == 1 ? "" : "s")}");
+            await SaveAsync();
+            var documents = new TranscriptDocument[parts.Count];
+            try
+            {
+                using var gate = new SemaphoreSlim(Math.Clamp(settings.ScribeConcurrency, 1, 4));
+                var completed = 0;
+                await Task.WhenAll(parts.Select(async part =>
+                {
+                    await gate.WaitAsync(cancellationToken);
+                    try
+                    {
+                        documents[part.Index] = await zoom.TranscribeAsync(
+                            part, job.SourceLanguage, credentials, cancellationToken);
+                        var done = Interlocked.Increment(ref completed);
+                        job.Progress = 22 + (int)Math.Round(done / (double)parts.Count * 53);
+                        job.StatusMessage = $"Transcribed {done} of {parts.Count} parts";
+                    }
+                    finally
+                    {
+                        gate.Release();
+                        await WorkFileCleaner.DeleteFileAsync(part.Path);
+                    }
+                }));
+                return (parts, documents);
+            }
+            catch (ZoomApiException exception) when (exception.StatusCode == 413)
+            {
+                var currentTarget = uploadTargetBytes ?? FfmpegAudioExtractor.UploadPartTargetBytes;
+                var smallerTarget = currentTarget / 2;
+                if (smallerTarget < 10_000_000L)
+                    throw;
+
+                uploadTargetBytes = smallerTarget;
+                job.Report(JobState.Preparing, 20,
+                    $"Zoom rejected the audio size; retrying with {smallerTarget / 1_000_000:N0} MB parts");
+                await SaveAsync();
+            }
         }
     }
 

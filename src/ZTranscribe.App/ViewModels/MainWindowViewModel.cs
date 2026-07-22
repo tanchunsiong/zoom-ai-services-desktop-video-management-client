@@ -114,6 +114,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ActualQueueTotalTimeLabel => FormatKnownTime(Jobs.Select(job => job.TimeComparison.Actual.Total));
     public int UnknownDurationCount => Jobs.Count(job => job.DurationSeconds is null);
     public int WithoutAudioCount => Jobs.Count(job => job.HasAudio == false);
+    public int FailedCount => Jobs.Count(job => job.State == JobState.Failed);
+    public bool HasFailedJobs => FailedCount > 0;
     public bool HasUnknownDurationJobs => UnknownDurationCount > 0;
     public bool HasWithoutAudioJobs => WithoutAudioCount > 0;
     public string UnknownDurationFilterLabel => $"Unknown {UnknownDurationCount:N0}";
@@ -358,7 +360,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             RefreshTimeCalibration();
         else if (e.PropertyName is nameof(QueueJob.CostComparison) or nameof(QueueJob.TimeComparison))
             RaiseQueueCostProperties();
-        if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio))
+        if (e.PropertyName is nameof(QueueJob.DurationSeconds) or nameof(QueueJob.HasAudio) or nameof(QueueJob.State))
             RefreshQueueFilter();
     }
 
@@ -381,6 +383,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(QueueDurationLabel));
         OnPropertyChanged(nameof(UnknownDurationCount));
         OnPropertyChanged(nameof(WithoutAudioCount));
+        OnPropertyChanged(nameof(FailedCount));
+        OnPropertyChanged(nameof(HasFailedJobs));
         OnPropertyChanged(nameof(HasUnknownDurationJobs));
         OnPropertyChanged(nameof(HasWithoutAudioJobs));
         OnPropertyChanged(nameof(UnknownDurationFilterLabel));

@@ -125,6 +125,10 @@
                                 <MenuItem Header="Preview media" Click="PreviewJobMenuItem_Click"/>
                                 <MenuItem Header="Review" Click="ReviewJobMenuItem_Click"
                                           Visibility="{Binding PlacementTarget.SelectedItem.CanReview, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibility}}"/>
+                                <MenuItem Header="Retry" Click="RetryJobMenuItem_Click"
+                                          Visibility="{Binding PlacementTarget.SelectedItem.CanRetry, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibility}}"/>
+                                <MenuItem Header="Retry all failed" Click="RetryAllFailedMenuItem_Click"
+                                          IsEnabled="{Binding PlacementTarget.DataContext.HasFailedJobs, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                 <MenuItem Header="Remove selected" Click="RemoveJobMenuItem_Click"/>
                             </ContextMenu>
                         </DataGrid.ContextMenu>

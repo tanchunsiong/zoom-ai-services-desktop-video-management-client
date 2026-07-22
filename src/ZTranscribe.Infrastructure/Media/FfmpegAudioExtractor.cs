@@ -71,7 +71,8 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         string workDirectory,
         UserSettings settings,
         IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? uploadTargetBytes = null)
     {
         var probe = await ProbeAsync(job.SourcePath, settings, cancellationToken);
         if (string.IsNullOrWhiteSpace(probe.AudioCodec))
@@ -82,7 +83,7 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);
         var requestedSegment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
-        var segment = SegmentDurationFor(probe, profile, requestedSegment);
+        var segment = SegmentDurationFor(probe, profile, requestedSegment, uploadTargetBytes);
         var count = Math.Max(1, (int)Math.Ceiling(probe.Duration.TotalSeconds / segment.TotalSeconds));
         var parts = new List<PreparedAudioPart>(count);
         var outputChannels = OutputChannelsFor(probe.Channels);
@@ -133,7 +134,8 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
     internal static TimeSpan SegmentDurationFor(
         MediaProbe probe,
         AudioProfile profile,
-        TimeSpan requested)
+        TimeSpan requested,
+        long? uploadTargetBytes = null)
     {
         if (requested <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(requested), "The segment duration must be positive.");
@@ -149,7 +151,7 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
             var channels = OutputChannelsFor(probe.Channels);
             bytesPerSecond = checked((long)sampleRate * channels * 2L);
         }
-        var maximumSeconds = Math.Max(1, UploadPartTargetBytes / bytesPerSecond);
+        var maximumSeconds = Math.Max(1, (uploadTargetBytes ?? UploadPartTargetBytes) / bytesPerSecond);
         return TimeSpan.FromSeconds(Math.Min(requested.TotalSeconds, maximumSeconds));
     }
 
