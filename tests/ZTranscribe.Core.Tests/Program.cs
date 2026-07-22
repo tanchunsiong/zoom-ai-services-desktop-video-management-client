@@ -545,7 +545,7 @@ Check("PCM compatibility segments stay below the Zoom part limit", () =>
     var profile = FfmpegAudioExtractor.ProfileFor("ac3");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
     var estimatedBytes = segment.TotalSeconds * probe.SampleRate * FfmpegAudioExtractor.OutputChannelsFor(probe.Channels) * 2;
-    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= 40_000_000L;
+    return segment < TimeSpan.FromMinutes(15) && estimatedBytes <= FfmpegAudioExtractor.UploadPartTargetBytes;
 });
 
 Check("Multichannel audio is downmixed to a Zoom-compatible stereo stream", () =>
@@ -588,22 +588,22 @@ Check("Extraction maps the selected absolute audio stream and seeks after input"
     return arguments.Contains("0:2") && inputIndex >= 0 && seekIndex > inputIndex;
 });
 
-Check("Missing bitrate still gets a conservative PCM segment limit", () =>
+Check("Missing bitrate stays below the upload target", () =>
 {
     var probe = new MediaProbe(TimeSpan.FromHours(1), "mp3", 48_000, 2, null, false);
     var segment = FfmpegAudioExtractor.SegmentDurationFor(
         probe, FfmpegAudioExtractor.ProfileFor("mp3"), TimeSpan.FromMinutes(15));
     var estimatedBytes = segment.TotalSeconds * probe.SampleRate * 2 * 2;
-    return estimatedBytes <= 40_000_000L;
+    return estimatedBytes <= FfmpegAudioExtractor.UploadPartTargetBytes;
 });
 
-Check("Stream-copy segments also target the conservative upload size", () =>
+Check("High-bitrate stream-copy segments stay below the upload target", () =>
 {
-    var probe = new MediaProbe(TimeSpan.FromHours(1), "mp3", 48_000, 2, 512_000, false);
+    var probe = new MediaProbe(TimeSpan.FromHours(1), "mp3", 48_000, 2, 900_000, false);
     var profile = FfmpegAudioExtractor.ProfileFor("mp3");
     var segment = FfmpegAudioExtractor.SegmentDurationFor(probe, profile, TimeSpan.FromMinutes(15));
     return segment < TimeSpan.FromMinutes(15)
-        && segment.TotalSeconds * probe.BitRate / 8 <= 40_000_000L;
+        && segment.TotalSeconds * probe.BitRate / 8 <= FfmpegAudioExtractor.UploadPartTargetBytes;
 });
 
 await CheckAsync("Temporary audio is deleted after an upload outcome", async () =>

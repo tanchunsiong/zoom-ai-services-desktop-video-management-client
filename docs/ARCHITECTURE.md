@@ -20,7 +20,7 @@ WPF shell
 1. Probe source with ffprobe and reject files without an audio stream.
 2. Map a compatible source codec to a Zoom-supported container, or select PCM WAV fallback for every other FFmpeg-decodable codec.
 3. Extract time-bounded audio-only parts using stream copy where possible; incompatible codecs, including AC3 and WMA, are decoded to PCM without resampling or remixing.
-4. Target 40 MB parts using exact PCM byte rate or the probed compressed bitrate, leaving headroom below Zoom Scribe's documented limit and observed gateway behavior.
+4. Target 90,000,000-byte parts using exact PCM byte rate or the probed compressed bitrate, leaving 10 MB of headroom below Zoom Scribe's documented 100 MB limit.
 5. Send up to the configured number of parts concurrently.
 6. Offset each returned segment by its part start, sort, and renumber.
 7. Write original WebVTT and transcript JSON.
