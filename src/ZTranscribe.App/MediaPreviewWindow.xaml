@@ -20,10 +20,11 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="1" Background="#000000" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="1" MinWidth="640" MinHeight="360" Background="#000000" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
             <Grid>
                 <vlc:VideoView MediaPlayer="{Binding Player.MediaPlayer}"
-                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                               HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                 <TextBlock x:Name="PlaybackErrorText" Visibility="Collapsed" Foreground="#FFFFFF" Background="#CC000000"
                            TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"
                            MaxWidth="620" Padding="18,12"/>

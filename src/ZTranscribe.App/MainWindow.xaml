@@ -346,9 +346,9 @@
                     </Grid>
                     <Grid Grid.Row="1" MinHeight="420">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3*" MinWidth="460"/>
+                            <ColumnDefinition Width="640" MinWidth="460" MaxWidth="640"/>
                             <ColumnDefinition Width="8"/>
-                            <ColumnDefinition Width="2*" MinWidth="300"/>
+                            <ColumnDefinition Width="*" MinWidth="300"/>
                         </Grid.ColumnDefinitions>
                         <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                             <Grid.RowDefinitions>
@@ -358,7 +358,8 @@
                             </Grid.RowDefinitions>
                             <Border Background="#050505" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="4,4,0,0" ClipToBounds="True">
                                 <vlc:VideoView MediaPlayer="{Binding Player.MediaPlayer}"
-                                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                               HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                             </Border>
                             <Border Grid.Row="1" Background="#000000" BorderBrush="{StaticResource Border}" BorderThickness="1,0,1,0" Padding="16,8">
                                 <TextBlock Text="{Binding ActiveCaptionText}" Foreground="#FFFFFF" FontSize="18"
@@ -397,7 +398,7 @@
                                 </Grid>
                             </Border>
                         </Grid>
-                        <GridSplitter Grid.Column="1" Width="8" Background="Transparent"/>
+                        <Border Grid.Column="1" Width="1" Background="{StaticResource Border}" HorizontalAlignment="Center"/>
                         <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="4" Padding="10">
                             <TabControl Background="Transparent" BorderThickness="0">
                                 <TabItem Header="Captions">
