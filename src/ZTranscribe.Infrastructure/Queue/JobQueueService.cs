@@ -497,10 +497,12 @@ public sealed class JobQueueService(
         CancellationToken cancellationToken)
     {
         long? uploadTargetBytes = null;
+        TimeSpan? maximumSegmentDuration = null;
         while (true)
         {
             var parts = await audioExtractor.ExtractAsync(
-                job, work, settings, extractionProgress, cancellationToken, uploadTargetBytes);
+                job, work, settings, extractionProgress, cancellationToken,
+                uploadTargetBytes, maximumSegmentDuration);
             job.Report(JobState.Transcribing, 22,
                 $"Transcribing {parts.Count} audio part{(parts.Count == 1 ? "" : "s")}");
             await SaveAsync();
@@ -540,7 +542,26 @@ public sealed class JobQueueService(
                     $"Zoom rejected the audio size; retrying with {smallerTarget / 1_000_000:N0} MB parts");
                 await SaveAsync();
             }
+            catch (ZoomApiException exception) when (exception.StatusCode == 503)
+            {
+                var currentDuration = maximumSegmentDuration ??
+                    TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
+                var smallerDuration = SmallerSegmentDuration(currentDuration);
+                if (smallerDuration is null)
+                    throw;
+
+                maximumSegmentDuration = smallerDuration.Value;
+                job.Report(JobState.Preparing, 20,
+                    $"Zoom could not process an audio segment; retrying with {smallerDuration.Value.TotalMinutes:0.##}-minute parts");
+                await SaveAsync();
+            }
         }
+    }
+
+    internal static TimeSpan? SmallerSegmentDuration(TimeSpan currentDuration)
+    {
+        var smaller = TimeSpan.FromSeconds(Math.Floor(currentDuration.TotalSeconds / 2));
+        return smaller < TimeSpan.FromMinutes(1) ? null : smaller;
     }
 
     private async Task CompleteRemainingTasksAsync(

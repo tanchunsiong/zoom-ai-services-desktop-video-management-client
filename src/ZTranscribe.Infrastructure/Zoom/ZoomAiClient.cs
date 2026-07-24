@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -313,9 +314,42 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
                 continue;
             }
             if (!Retryable.Contains(response.StatusCode) || attempt >= delays.Length) return response;
-            var delay = response.Headers.RetryAfter?.Delta ?? delays[attempt];
+            var delay = response.Headers.RetryAfter?.Delta;
+            if (delay is null && response.Headers.RetryAfter?.Date is { } retryAt)
+            {
+                var untilRetry = retryAt - DateTimeOffset.UtcNow;
+                if (untilRetry > TimeSpan.Zero) delay = untilRetry;
+            }
+            if (delay is null)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                delay = RetryDelayFromBody(responseBody);
+            }
+            delay ??= delays[attempt];
             response.Dispose();
-            await Task.Delay(delay, cancellationToken);
+            await Task.Delay(delay.Value, cancellationToken);
+        }
+    }
+
+    internal static TimeSpan? RetryDelayFromBody(string responseBody)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            if (!document.RootElement.TryGetProperty("metadata", out var metadata) ||
+                !metadata.TryGetProperty("retry_after_seconds", out var value)) return null;
+            var seconds = value.ValueKind == JsonValueKind.Number
+                ? value.GetDouble()
+                : double.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+                    ? parsed
+                    : 0;
+            return seconds > 0 && double.IsFinite(seconds)
+                ? TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 300))
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 

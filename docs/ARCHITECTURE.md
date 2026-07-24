@@ -31,7 +31,8 @@ WPF shell
 ## Failure boundaries
 
 - Process failures show the final useful FFmpeg/ffprobe message.
-- HTTP 429, 502, 503, and 504 responses are retried twice with delay and `Retry-After` support.
+- HTTP 429, 502, 503, and 504 responses are retried twice with delay and both HTTP `Retry-After` and Zoom JSON retry-hint support.
+- A persistent Scribe 503 retries the job with progressively shorter audio segments, down to a one-minute floor.
 - Other upstream errors retain status and a bounded response excerpt, never credentials.
 - Interrupted in-flight states are recovered to Queued at the next launch.
 

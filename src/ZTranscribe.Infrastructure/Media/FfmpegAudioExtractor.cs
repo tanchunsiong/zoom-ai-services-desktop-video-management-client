@@ -78,7 +78,8 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         UserSettings settings,
         IProgress<double>? progress,
         CancellationToken cancellationToken,
-        long? uploadTargetBytes = null)
+        long? uploadTargetBytes = null,
+        TimeSpan? maximumSegmentDuration = null)
     {
         var probe = await ProbeAsync(job.SourcePath, settings, cancellationToken);
         if (string.IsNullOrWhiteSpace(probe.AudioCodec))
@@ -88,7 +89,8 @@ public sealed partial class FfmpegAudioExtractor : IAudioExtractor
         var profile = NormalizeProfile(probe);
         job.DurationSeconds = probe.Duration.TotalSeconds;
         Directory.CreateDirectory(workDirectory);
-        var requestedSegment = TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
+        var requestedSegment = maximumSegmentDuration ??
+            TimeSpan.FromMinutes(Math.Clamp(settings.SegmentMinutes, 1, 30));
         var segment = SegmentDurationFor(probe, profile, requestedSegment, uploadTargetBytes);
         var count = Math.Max(1, (int)Math.Ceiling(probe.Duration.TotalSeconds / segment.TotalSeconds));
         var parts = new List<PreparedAudioPart>(count);

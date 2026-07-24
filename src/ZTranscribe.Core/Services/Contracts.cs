@@ -30,7 +30,8 @@ public interface IAudioExtractor
         UserSettings settings,
         IProgress<double>? progress,
         CancellationToken cancellationToken,
-        long? uploadTargetBytes = null);
+        long? uploadTargetBytes = null,
+        TimeSpan? maximumSegmentDuration = null);
 }
 
 public interface IZoomAiClient

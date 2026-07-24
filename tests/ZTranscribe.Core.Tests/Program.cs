@@ -642,6 +642,21 @@ Check("High-bitrate stream-copy segments stay below the upload target", () =>
         && segment.TotalSeconds * probe.BitRate / 8 <= FfmpegAudioExtractor.UploadPartTargetBytes;
 });
 
+Check("Zoom JSON retry hints are honored", () =>
+{
+    const string response = """
+        {"code":503,"metadata":{"retry_after_seconds":"10"}}
+        """;
+    return ZoomAiClient.RetryDelayFromBody(response) == TimeSpan.FromSeconds(10)
+        && ZoomAiClient.RetryDelayFromBody("not json") is null;
+});
+
+Check("Persistent Scribe failures halve segment duration to a safe floor", () =>
+{
+    return JobQueueService.SmallerSegmentDuration(TimeSpan.FromMinutes(15)) == TimeSpan.FromMinutes(7.5)
+        && JobQueueService.SmallerSegmentDuration(TimeSpan.FromMinutes(1)) is null;
+});
+
 await CheckAsync("Temporary audio is deleted after an upload outcome", async () =>
 {
     var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-cleanup-{Guid.NewGuid():N}");
