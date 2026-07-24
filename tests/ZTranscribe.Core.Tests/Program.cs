@@ -249,6 +249,42 @@ Check("Generated outputs are source-named sidecars", () =>
         && paths.Summary == Path.Combine("C:\\media", "meeting.summary.md");
 });
 
+await CheckAsync("Queue search covers filenames, transcripts, translations, and summaries", async () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-search-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var filenameJob = new QueueJob { SourcePath = Path.Combine(directory, "Aurora launch.mp4") };
+        var transcriptJob = new QueueJob { SourcePath = Path.Combine(directory, "transcript.mp4") };
+        var translatedJob = new QueueJob
+        {
+            SourcePath = Path.Combine(directory, "translated.mp4"),
+            TranslationLanguage = "zh-CN"
+        };
+        var summaryJob = new QueueJob { SourcePath = Path.Combine(directory, "summary.mp4") };
+        var unrelatedJob = new QueueJob { SourcePath = Path.Combine(directory, "unrelated.mp4") };
+
+        File.WriteAllText(
+            JobQueueService.OutputPathsFor(transcriptJob).OriginalVtt,
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nThe aurora is visible.");
+        File.WriteAllText(
+            JobQueueService.OutputPathsFor(translatedJob).TranslatedVtt("zh-CN"),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nAurora translated");
+        File.WriteAllText(
+            JobQueueService.OutputPathsFor(summaryJob).Summary,
+            "# Summary\nThe AURORA project launched.");
+
+        var jobs = new[] { filenameJob, transcriptJob, translatedJob, summaryJob, unrelatedJob };
+        var matches = await new QueueSearchIndex().FindMatchesAsync(jobs, "aurora");
+        return matches.SetEquals(new[] { filenameJob.Id, transcriptJob.Id, translatedJob.Id, summaryJob.Id });
+    }
+    finally
+    {
+        Directory.Delete(directory, true);
+    }
+});
+
 Check("Existing sidecars are discovered per task", () =>
 {
     var directory = Path.Combine(Path.GetTempPath(), $"ztranscribe-existing-{Guid.NewGuid():N}");

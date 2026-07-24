@@ -27,6 +27,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _isInitializing;
     private int? _lastAddedCount;
     private QueueMediaFilter _queueMediaFilter;
+    private readonly QueueSearchIndex _queueSearchIndex = new();
+    private CancellationTokenSource? _queueSearchCancellation;
+    private HashSet<Guid>? _queueSearchMatches;
+    private string _queueSearchText = "";
+    private bool _isQueueSearchRunning;
 
     public MainWindowViewModel(
         JobQueueService queue,
@@ -124,7 +129,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public bool IsAllQueueFilter => _queueMediaFilter == QueueMediaFilter.All;
     public bool IsUnknownDurationFilter => _queueMediaFilter == QueueMediaFilter.UnknownDuration;
     public bool IsWithoutAudioFilter => _queueMediaFilter == QueueMediaFilter.WithoutAudio;
-    public string QueueCountLabel => _queueMediaFilter == QueueMediaFilter.All
+    public bool HasQueueSearch => !string.IsNullOrWhiteSpace(_queueSearchText);
+    public bool IsQueueSearchRunning
+    {
+        get => _isQueueSearchRunning;
+        private set => Set(ref _isQueueSearchRunning, value);
+    }
+    public string QueueSearchText
+    {
+        get => _queueSearchText;
+        set
+        {
+            value ??= "";
+            if (string.Equals(_queueSearchText, value, StringComparison.Ordinal)) return;
+            _queueSearchText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasQueueSearch));
+            BeginQueueSearch();
+        }
+    }
+    public string QueueCountLabel => _queueMediaFilter == QueueMediaFilter.All && !HasQueueSearch
         ? $"{Jobs.Count:N0} jobs in queue"
         : $"Showing {Jobs.Count(MatchesQueueFilter):N0} of {Jobs.Count:N0} jobs";
     public string LastAddedCountLabel => _lastAddedCount is null ? "" : $"Last added: {_lastAddedCount:N0}";
@@ -249,8 +273,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_queueMediaFilter == filter) return;
         _queueMediaFilter = filter;
-        JobsView.Refresh();
-        RaiseQueueFilterProperties();
+        RefreshQueueView();
     }
 
     public async Task OpenForReviewAsync(QueueJob job, bool translated)
@@ -367,17 +390,89 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ActiveJob));
     }
 
-    private bool MatchesQueueFilter(QueueJob job) => _queueMediaFilter switch
+    private bool MatchesQueueFilter(QueueJob job)
     {
-        QueueMediaFilter.UnknownDuration => job.DurationSeconds is null,
-        QueueMediaFilter.WithoutAudio => job.HasAudio == false,
-        _ => true
-    };
+        var matchesMediaFilter = _queueMediaFilter switch
+        {
+            QueueMediaFilter.UnknownDuration => job.DurationSeconds is null,
+            QueueMediaFilter.WithoutAudio => job.HasAudio == false,
+            _ => true
+        };
+        return matchesMediaFilter &&
+               (_queueSearchMatches is null || _queueSearchMatches.Contains(job.Id));
+    }
 
     private void RefreshQueueFilter()
     {
+        if (HasQueueSearch)
+        {
+            BeginQueueSearch();
+            return;
+        }
+        RefreshQueueView();
+    }
+
+    private void RefreshQueueView()
+    {
         JobsView.Refresh();
         RaiseQueueFilterProperties();
+    }
+
+    private void BeginQueueSearch()
+    {
+        _queueSearchCancellation?.Cancel();
+        var query = _queueSearchText.Trim();
+        if (query.Length == 0)
+        {
+            _queueSearchMatches = null;
+            IsQueueSearchRunning = false;
+            RefreshQueueView();
+            return;
+        }
+
+        var jobs = Jobs.ToArray();
+        _queueSearchMatches = jobs
+            .Where(job => job.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Select(job => job.Id)
+            .ToHashSet();
+        IsQueueSearchRunning = true;
+        RefreshQueueView();
+
+        var cancellation = new CancellationTokenSource();
+        _queueSearchCancellation = cancellation;
+        _ = CompleteQueueSearchAsync(jobs, query, cancellation);
+    }
+
+    private async Task CompleteQueueSearchAsync(
+        IReadOnlyCollection<QueueJob> jobs,
+        string query,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(200, cancellation.Token);
+            var matches = await _queueSearchIndex.FindMatchesAsync(jobs, query, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            _queueSearchMatches = matches;
+            RefreshQueueView();
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (ReferenceEquals(_queueSearchCancellation, cancellation))
+                Notice = $"Search could not read all sidecar files: {exception.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_queueSearchCancellation, cancellation))
+            {
+                _queueSearchCancellation = null;
+                IsQueueSearchRunning = false;
+            }
+            cancellation.Dispose();
+        }
     }
 
     private void RaiseQueueFilterProperties()
@@ -395,6 +490,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsAllQueueFilter));
         OnPropertyChanged(nameof(IsUnknownDurationFilter));
         OnPropertyChanged(nameof(IsWithoutAudioFilter));
+        OnPropertyChanged(nameof(HasQueueSearch));
     }
 
     private void RaiseQueueCostProperties()

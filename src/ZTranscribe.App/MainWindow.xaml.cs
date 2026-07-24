@@ -284,6 +284,19 @@ public partial class MainWindow : Window
     private void FilterWithoutAudio_Click(object sender, RoutedEventArgs e) =>
         ViewModel.SetQueueMediaFilter(QueueMediaFilter.WithoutAudio);
 
+    private void ClearQueueSearch_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.QueueSearchText = "";
+        QueueSearchBox.Focus();
+    }
+
+    private void QueueSearchBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        ViewModel.QueueSearchText = "";
+        e.Handled = true;
+    }
+
     private async void JobsGrid_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (ViewModel.SelectedJob is { CanReview: true }) await ReviewSelectedAsync(false);

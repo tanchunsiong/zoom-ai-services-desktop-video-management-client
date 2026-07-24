@@ -75,6 +75,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -104,7 +105,54 @@
                             <TextBlock Text="{Binding LastAddedCountLabel}" Foreground="{StaticResource Accent}" Margin="0,5,0,0" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
-                    <Border Grid.Row="1" Margin="0,20,0,14" Padding="12" Background="{StaticResource BlueSoft}" BorderBrush="{StaticResource Blue}" BorderThickness="1" CornerRadius="0">
+                    <Grid Grid.Row="1" Margin="0,18,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="440"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Height="42" Background="{StaticResource PanelRaised}" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="42"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                           Foreground="{StaticResource Blue}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Grid Grid.Column="1">
+                                    <TextBox x:Name="QueueSearchBox"
+                                             Text="{Binding QueueSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             BorderThickness="0" Padding="0" VerticalContentAlignment="Center"
+                                             ToolTip="Search filenames, transcripts, translations, and summaries"
+                                             KeyDown="QueueSearchBox_KeyDown"/>
+                                    <TextBlock Text="Search filename, transcript, or summary"
+                                               Foreground="{StaticResource TextMuted}" IsHitTestVisible="False"
+                                               VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasQueueSearch}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                                <Button Grid.Column="2" Content="&#xE711;" Style="{StaticResource IconButton}"
+                                        Margin="5" ToolTip="Clear search" Click="ClearQueueSearch_Click"
+                                        Visibility="{Binding HasQueueSearch, Converter={StaticResource BooleanToVisibility}}"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Visibility="{Binding IsQueueSearchRunning, Converter={StaticResource BooleanToVisibility}}">
+                            <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource Blue}"
+                                       FontSize="15" Margin="0,0,7,0"/>
+                            <TextBlock Text="Searching sidecar text..." Foreground="{StaticResource TextMuted}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="2" Margin="0,0,0,14" Padding="12" Background="{StaticResource BlueSoft}" BorderBrush="{StaticResource Blue}" BorderThickness="1" CornerRadius="0">
                         <StackPanel Orientation="Horizontal">
                             <Border Width="30" Height="30" Background="{StaticResource Blue}" VerticalAlignment="Center">
                                 <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="16" Foreground="{StaticResource TextOnDark}"
@@ -117,7 +165,7 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
-                    <DataGrid x:Name="JobsGrid" Grid.Row="2" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" Loaded="JobsGrid_Loaded"
+                    <DataGrid x:Name="JobsGrid" Grid.Row="3" ItemsSource="{Binding JobsView}" SelectedItem="{Binding SelectedJob}" Loaded="JobsGrid_Loaded"
                               IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" AlternationCount="2" MouseDoubleClick="JobsGrid_DoubleClick"
                               PreviewMouseRightButtonDown="JobsGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
@@ -334,7 +382,7 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,14,0,0">
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,14,0,0">
                         <Button Content="Preview selected" Click="PreviewSelected_Click"/>
                         <Button Content="Review selected" Click="Review_Click"/>
                         <Button Content="Translate selected" Click="TranslateSelected_Click"/>

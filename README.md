@@ -7,6 +7,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 ## What is included
 
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
+- Case-insensitive queue search across media filenames, original and translated captions, transcript JSON, and summary sidecars, composed with the existing media-status filters.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
 - FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to a Zoom-compatible 128 kbps MP3 with a stereo downmix when needed.
