@@ -392,7 +392,372 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="▶  Review">
+            <TabItem Header="&#x25CF;  Live" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                <Grid Margin="24" DataContext="{Binding Live}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="LIVE TRANSCRIPTION" Foreground="{StaticResource Accent}" FontFamily="{StaticResource DisplayFont}"
+                                       FontSize="11" FontWeight="Bold"/>
+                            <TextBlock Text="Live mode" FontFamily="{StaticResource DisplayFont}" FontSize="28"
+                                       FontWeight="SemiBold" Margin="0,3,0,0"/>
+                            <TextBlock Text="Stream audio to Scribe over WebSocket and receive segment-level transcriptions in real time."
+                                       Foreground="{StaticResource TextMuted}" Margin="0,6,0,0"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                Background="{StaticResource PanelRaised}" Padding="12,8" VerticalAlignment="Bottom">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="9" Height="9" Margin="0,0,8,0">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="{StaticResource TextMuted}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStreaming}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource Green}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsSpeechActive}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource Accent}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="360"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border BorderBrush="{StaticResource Border}" BorderThickness="0,1,1,0" Padding="0,18,24,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="AUDIO INPUT" FontFamily="{StaticResource DisplayFont}" FontSize="11"
+                                               FontWeight="Bold" Foreground="{StaticResource Blue}"/>
+                                    <Grid Margin="0,12,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton GroupName="LiveAudioSource" Style="{StaticResource PlaybackRateButton}"
+                                                     Width="Auto" Height="36" Margin="0,0,2,0"
+                                                     IsChecked="{Binding IsMicrophoneSource, Mode=OneWay}"
+                                                     IsEnabled="{Binding IsConfigurationEnabled}"
+                                                     Click="MicrophoneSource_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE720;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
+                                                <TextBlock Text="Microphone" Margin="7,0,0,0"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                        <RadioButton Grid.Column="1" GroupName="LiveAudioSource"
+                                                     Style="{StaticResource PlaybackRateButton}"
+                                                     Width="Auto" Height="36" Margin="2,0,0,0"
+                                                     IsChecked="{Binding IsSpeakerLoopbackSource, Mode=OneWay}"
+                                                     IsEnabled="{Binding IsConfigurationEnabled}"
+                                                     Click="SpeakerLoopbackSource_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE7F5;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
+                                                <TextBlock Text="Speaker loopback" Margin="7,0,0,0"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                    </Grid>
+                                    <TextBlock Text="{Binding AudioDeviceLabel}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="42"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox ItemsSource="{Binding AudioDevices}" SelectedItem="{Binding SelectedAudioDevice}"
+                                                  IsEnabled="{Binding IsConfigurationEnabled}" Height="38"/>
+                                        <Button Grid.Column="1" Content="&#xE72C;" Style="{StaticResource IconButton}"
+                                                Width="38" Height="38" Margin="4,0,0,0" ToolTip="Refresh audio devices"
+                                                Click="RefreshAudioDevices_Click" IsEnabled="{Binding IsConfigurationEnabled}"/>
+                                    </Grid>
+                                    <TextBlock Foreground="{StaticResource Accent}" Margin="0,6,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="No audio device detected"/>
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasAudioDevices}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <Grid Margin="0,14,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Input level" Foreground="{StaticResource TextMuted}"/>
+                                        <CheckBox Grid.Column="1" Content="Auto gain" IsChecked="{Binding AutomaticGainEnabled}"
+                                                  IsEnabled="{Binding IsConfigurationEnabled}" ToolTip="Apply software gain to audio sent to Scribe"
+                                                  VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,7,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="82"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressBar Height="9" Maximum="1" Value="{Binding InputLevel, Mode=OneWay}"
+                                                     Background="#D7D2C8" VerticalAlignment="Center">
+                                            <ProgressBar.Style>
+                                                <Style TargetType="ProgressBar">
+                                                    <Setter Property="Foreground" Value="{StaticResource Green}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding InputLevelState}" Value="Warning">
+                                                            <Setter Property="Foreground" Value="{StaticResource Orange}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding InputLevelState}" Value="Clipping">
+                                                            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ProgressBar.Style>
+                                        </ProgressBar>
+                                        <TextBlock Grid.Column="1" Text="{Binding InputLevelLabel}" HorizontalAlignment="Right"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding InputLevelState}" Value="Warning">
+                                                            <Setter Property="Foreground" Value="{StaticResource Orange}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding InputLevelState}" Value="Clipping">
+                                                            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+
+                                    <TextBlock Text="Transcription language" FontWeight="SemiBold" Margin="0,14,0,5"/>
+                                    <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
+                                              IsEnabled="{Binding IsConfigurationEnabled}" Height="38"/>
+
+                                    <Border BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Margin="0,16,0,12"/>
+                                    <TextBlock Text="VOICE ACTIVITY DETECTION" FontFamily="{StaticResource DisplayFont}" FontSize="11"
+                                               FontWeight="Bold" Foreground="{StaticResource Blue}"/>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Threshold" FontWeight="SemiBold"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding VadThreshold, StringFormat={}{0:0.00}}"
+                                                   HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+                                    </Grid>
+                                    <Slider Minimum="0.1" Maximum="0.9" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                            Value="{Binding VadThreshold}" IsEnabled="{Binding IsConfigurationEnabled}"/>
+
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Prefix padding" FontWeight="SemiBold"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding PrefixPaddingMs, StringFormat={}{0} ms}"
+                                                   HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True"
+                                            Value="{Binding PrefixPaddingMs}" IsEnabled="{Binding IsConfigurationEnabled}"/>
+
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Silence ends turn" FontWeight="SemiBold"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding SilenceDurationMs, StringFormat={}{0} ms}"
+                                                   HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+                                    </Grid>
+                                    <Slider Minimum="250" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True"
+                                            Value="{Binding SilenceDurationMs}" IsEnabled="{Binding IsConfigurationEnabled}"/>
+
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Minimum pause" FontWeight="SemiBold"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding MinPauseDurationMs, StringFormat={}{0} ms}"
+                                                   HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True"
+                                            Value="{Binding MinPauseDurationMs}" IsEnabled="{Binding IsConfigurationEnabled}"/>
+
+                                    <Grid Margin="0,12,0,0" IsEnabled="{Binding IsConfigurationEnabled}">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSpeakerLoopbackSource}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="100"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Content="Force output every"
+                                                  IsChecked="{Binding ForceCaptionCadenceEnabled}"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip="Create periodic VAD boundaries for uninterrupted speech"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding CaptionCadences}"
+                                                  SelectedItem="{Binding SelectedCaptionCadence}"
+                                                  IsEnabled="{Binding ForceCaptionCadenceEnabled}"
+                                                  Height="32"/>
+                                    </Grid>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,12">
+                                        <Button Style="{StaticResource PrimaryButton}" Click="StartLive_Click"
+                                                IsEnabled="{Binding CanStart}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
+                                                <TextBlock Text="Start live" Margin="7,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Click="StopLive_Click" IsEnabled="{Binding CanStop}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE71A;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
+                                                <TextBlock Text="Stop" Margin="7,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="LIVE TRANSCRIPT" FontFamily="{StaticResource DisplayFont}" FontSize="11"
+                                               FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+                                    <TextBlock Text="{Binding SegmentCountLabel}" Foreground="{StaticResource TextMuted}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE8C8;" ToolTip="Copy transcript"
+                                            Click="CopyLiveTranscript_Click" IsEnabled="{Binding HasSegments}"/>
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE74D;" ToolTip="Clear transcript"
+                                            Margin="6,0,0,0" Click="ClearLiveTranscript_Click" IsEnabled="{Binding HasSegments}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Border Grid.Row="1" Background="#090909" BorderBrush="{StaticResource Ink}" BorderThickness="1">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Border Grid.Row="0" Height="104" Background="#181818" BorderBrush="#3A3936"
+                                            BorderThickness="0,0,0,1" Padding="16,10">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="DETECTED WORDS / NOT YET FINAL" Foreground="{StaticResource Yellow}"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                       FontWeight="Bold" Margin="0,0,0,7"/>
+                                            <Grid Grid.Row="1">
+                                                <TextBox x:Name="DetectedWordsTextBox"
+                                                         AutomationProperties.Name="Detected words not yet final"
+                                                         Text="{Binding InterimCaptionText, Mode=OneWay}"
+                                                         IsReadOnly="True" AcceptsReturn="True"
+                                                         TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                                         Background="#090909" Foreground="{StaticResource TextOnDark}"
+                                                         BorderBrush="#4B4944" BorderThickness="1"
+                                                         Padding="9,6" FontSize="16" TextBlock.LineHeight="22"
+                                                         SelectionBrush="{StaticResource Blue}"/>
+                                                <TextBlock Text="Waiting for interim words..."
+                                                           Foreground="#77736C" Margin="10,8"
+                                                           IsHitTestVisible="False">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasInterimTranscript}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                    <ListBox x:Name="LiveTranscriptList" Grid.Row="1" ItemsSource="{Binding Segments}" Background="Transparent"
+                                             BorderThickness="0" Foreground="{StaticResource TextOnDark}"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto" Padding="16,10">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="Margin" Value="0"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Focusable" Value="False"/>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="72"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Number, StringFormat=SEG {0:00}}"
+                                                                   Foreground="{StaticResource Yellow}" FontFamily="{StaticResource MonoFont}"
+                                                                   FontSize="11" FontWeight="Bold"/>
+                                                        <TextBlock Text="{Binding TimeLabel}" Foreground="{StaticResource TextOnDarkMuted}"
+                                                                   FontFamily="{StaticResource MonoFont}" FontSize="10" Margin="0,4,0,0"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Text}" Foreground="{StaticResource TextOnDark}"
+                                                               TextWrapping="Wrap" FontSize="18" LineHeight="26"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                        <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="34"
+                                                   Foreground="#66635E" HorizontalAlignment="Center"/>
+                                        <TextBlock Foreground="#8C8880" Margin="0,10,0,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Completed speech segments appear here"/>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasSegments}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="ReviewTab" Header="▶  Review">
                 <Grid Margin="24">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Grid Margin="0,0,0,16">

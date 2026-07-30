@@ -8,6 +8,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Case-insensitive queue search across media filenames, original and translated captions, transcript JSON, and summary sidecars, composed with the existing media-status filters.
+- Live mode with selectable microphone or Windows speaker-loopback capture, a live input meter, configurable VAD, and completed speech-turn transcripts streamed over Zoom Scribe's authenticated WebSocket endpoint.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
 - FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to a Zoom-compatible 128 kbps MP3 with a stereo downmix when needed.
@@ -39,6 +40,22 @@ Compilation is validated locally before changes are committed and pushed.
 6. Add media, select its spoken language and optional translation language, then start the queue.
 7. Double-click a Ready job to review it with captions.
 
+## Live mode
+
+Open the Live tab, choose **Microphone** or **Speaker loopback**, select the input device and transcription language, then choose **Start live**. Speaker loopback captures the audio mix playing through the selected Windows output endpoint. The app normalizes either source to little-endian 16 kHz mono PCM16 audio, assembles it into approximately 100 ms frames, and sends each frame as a binary WebSocket message. VAD controls default to threshold `0.5`, prefix padding `300 ms`, silence duration `350 ms`, and minimum pause `100 ms`.
+
+The input meter reports peak level in dBFS, changes from green to orange above `-12 dBFS`, and holds red for one second when the source clips. Optional **Auto gain** applies up to `8x` software gain to the streamed PCM with a `-18 dBFS` RMS target and `-1 dBFS` peak headroom; it does not change the Windows microphone or speaker volume.
+
+Choose **Stop** to stop audio capture, drain buffered frames, send `session.close`, and wait for final transcript segments before disconnecting. Live audio remains in memory and is not written to disk. When speaker output is silent, the app sends quiet keepalive frames so the Live session does not hit its idle timeout.
+
+The app waits for Zoom's `session.updated` acknowledgement before streaming audio. The **Silence ends turn** control has a `250 ms` floor because shorter values can cause Zoom Live to return an internal pipeline error; `250 ms` is the low-latency setting for fast speech.
+
+Microphone and Speaker loopback use separate remembered VAD profiles. Microphone starts at threshold `0.5`, prefix padding `300 ms`, silence duration `350 ms`, and minimum pause `100 ms`. Speaker loopback starts with a faster threshold `0.45`, prefix padding `300 ms`, silence duration `250 ms`, and minimum pause `50 ms`. Switching sources restores the last values used for that source.
+
+The Live transcript surface follows Zoom's beta quickstart behavior: any non-final event containing `transcript`, `text`, or `delta` replaces the fixed-height **Detected words / not yet final** textbox above the segment history, and `transcription.completed` moves finalized text into the completed list below.
+
+Because some beta accounts emit only completed turns, Speaker loopback enables **Force output every 3 seconds** by default. Available cadences are `500 ms`, `1`, `2`, `3`, `5`, and `10 seconds`. The client inserts a paced VAD boundary at the selected cadence while capture continues buffering, forcing Zoom to finalize uninterrupted speech without dropping source audio. This fallback is optional and does not apply to microphone mode; very short cadences can split words more aggressively.
+
 ## Audio integrity
 
 Supported stream-copy mappings are:
@@ -57,8 +74,8 @@ Temporary audio lives under `%LOCALAPPDATA%\Z Transcribe\work`. Each segment is 
 
 - `src/ZTranscribe.Core` — models, service contracts, language routing, WebVTT.
 - `src/ZTranscribe.Infrastructure` — FFmpeg/ffprobe, Zoom HTTP/JWT, persistence, queue pipeline.
-- `src/ZTranscribe.App` — WPF UI, Windows Credential Manager, LibVLCSharp playback.
-- `tests/ZTranscribe.Core.Tests` — dependency-free executable checks run in CI.
+- `src/ZTranscribe.App` — WPF UI, Windows Credential Manager, NAudio microphone and WASAPI loopback capture, LibVLCSharp playback.
+- `tests/ZTranscribe.Core.Tests` — executable checks run locally without GitHub Actions.
 - `docs` — UX rationale, architecture, security, Windows test plan, and macOS path.
 
 ## Open source and license
@@ -75,5 +92,6 @@ redistribution considerations.
 - Credential validation avoids making a paid API request; the first job is the authoritative server-side credential check.
 - Dollar estimates depend on the usage rates configured for your Zoom Build account and may differ from the final invoice.
 - The app uses the first audio stream. Multi-track selection is a planned enhancement.
+- Speaker loopback captures the selected Windows playback endpoint's mixed output. Per-application audio selection is not currently available.
 - The FFmpeg binaries are not redistributed in this repository.
 

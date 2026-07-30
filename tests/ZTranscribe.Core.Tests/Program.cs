@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 using ZTranscribe.Core.Models;
@@ -53,6 +54,139 @@ Check("VTT round trip", () =>
     var cues = new[] { new TranscriptCue(1, TimeSpan.FromSeconds(1.25), TimeSpan.FromSeconds(4.5), "Hello") };
     var parsed = WebVtt.Parse(WebVtt.Write(cues));
     return parsed.Count == 1 && parsed[0].Text == "Hello" && parsed[0].Start == cues[0].Start;
+});
+
+Check("Live PCM16 audio is assembled into exact frames", () =>
+{
+    var assembler = new Pcm16FrameAssembler(8);
+    var first = assembler.Append([0, 1, 2, 3, 4, 5], 0, 6);
+    var second = assembler.Append([6, 7, 8, 9, 10, 11], 0, 6);
+    var remainder = assembler.Drain();
+    return first.Count == 0
+        && second.Count == 1
+        && second[0].SequenceEqual(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 })
+        && remainder is not null
+        && remainder.SequenceEqual(new byte[] { 8, 9, 10, 11 });
+});
+
+Check("Live input meter reports peak and clipping in dBFS", () =>
+{
+    var halfScale = new byte[320];
+    for (var index = 0; index < halfScale.Length; index += 2)
+        BinaryPrimitives.WriteInt16LittleEndian(halfScale.AsSpan(index, 2), 16_384);
+    var reading = new Pcm16AudioProcessor().ProcessInPlace(halfScale, 0, halfScale.Length, false);
+
+    var clipped = new byte[2];
+    BinaryPrimitives.WriteInt16LittleEndian(clipped, short.MaxValue);
+    var clipReading = new Pcm16AudioProcessor().ProcessInPlace(clipped, 0, clipped.Length, false);
+    return Math.Abs(reading.PeakDbfs - -6.0206) < 0.01
+        && Math.Abs(reading.RmsDbfs - -6.0206) < 0.01
+        && !reading.IsClipping
+        && clipReading.IsClipping
+        && clipReading.PeakDbfs > -0.01;
+});
+
+Check("Live input meter accepts an empty capture callback", () =>
+{
+    var reading = new Pcm16AudioProcessor().ProcessInPlace([], 0, 0, false);
+    return double.IsNegativeInfinity(reading.PeakDbfs)
+        && double.IsNegativeInfinity(reading.RmsDbfs)
+        && !reading.IsClipping;
+});
+
+Check("Live automatic gain boosts quiet PCM without clipping", () =>
+{
+    var quiet = new byte[320];
+    for (var index = 0; index < quiet.Length; index += 2)
+        BinaryPrimitives.WriteInt16LittleEndian(quiet.AsSpan(index, 2), 500);
+    var reading = new Pcm16AudioProcessor().ProcessInPlace(quiet, 0, quiet.Length, true);
+    var amplified = BinaryPrimitives.ReadInt16LittleEndian(quiet);
+    return reading.AppliedGain > 1
+        && amplified > 500
+        && !reading.IsClipping
+        && reading.PeakDbfs < -1;
+});
+
+Check("Live session update uses Zoom's pcm16 and VAD schema", () =>
+{
+    var json = ZoomLiveScribeClient.BuildSessionUpdateJson(
+        new LiveScribeOptions("ja-JP", 0.45, 250, 400, 150));
+    using var document = JsonDocument.Parse(json);
+    var root = document.RootElement;
+    var vad = root.GetProperty("turn_detection");
+    return root.GetProperty("type").GetString() == "session.update"
+        && root.GetProperty("input_audio_format").GetString() == "pcm16"
+        && root.GetProperty("language").GetString() == "ja-JP"
+        && vad.GetProperty("threshold").GetDouble() == 0.45
+        && vad.GetProperty("prefix_padding_ms").GetInt32() == 250
+        && vad.GetProperty("silence_duration_ms").GetInt32() == 400
+        && vad.GetProperty("min_pause_duration_ms").GetInt32() == 150;
+});
+
+Check("Live VAD rejects unstable sub-250 ms turn endings", () =>
+{
+    try
+    {
+        new LiveScribeOptions("en-US", 0.45, 300, 150, 100).Validate();
+        return false;
+    }
+    catch (InvalidOperationException exception)
+    {
+        return exception.Message.Contains("250", StringComparison.Ordinal);
+    }
+});
+
+Check("Live forced caption cadence validates its safe range", () =>
+{
+    new LiveScribeOptions(
+        "en-US",
+        ForcedCaptionIntervalMs: 500).Validate();
+    try
+    {
+        new LiveScribeOptions(
+            "en-US",
+            ForcedCaptionIntervalMs: 250).Validate();
+        return false;
+    }
+    catch (InvalidOperationException)
+    {
+        return true;
+    }
+});
+
+Check("Live sources have distinct remembered VAD defaults", () =>
+{
+    var microphone = LiveVadPresets.Microphone;
+    var speaker = LiveVadPresets.SpeakerLoopback;
+    return microphone.Threshold == 0.5
+        && microphone.PrefixPaddingMs == 300
+        && microphone.SilenceDurationMs == 350
+        && microphone.MinPauseDurationMs == 100
+        && speaker.Threshold == 0.45
+        && speaker.PrefixPaddingMs == 300
+        && speaker.SilenceDurationMs == 250
+        && speaker.MinPauseDurationMs == 50;
+});
+
+Check("Live server events expose completed text and structured errors", () =>
+{
+    var completed = ZoomLiveScribeClient.ParseServerEvent(
+        """{"type":"transcription.completed","transcript":"Hello live"}""");
+    var error = ZoomLiveScribeClient.ParseServerEvent(
+        """{"type":"error","error":{"message":"Invalid session"}}""");
+    return completed.Type == "transcription.completed"
+        && completed.Transcript == "Hello live"
+        && error.Type == "error"
+        && error.Error == "Invalid session";
+});
+
+Check("Live beta delta events expose nested interim text", () =>
+{
+    var parsed = ZoomLiveScribeClient.ParseServerEvent(
+        """{"type":"transcription.delta","data":{"delta":"words in progress "}}""");
+    return parsed.Type == "transcription.delta"
+        && parsed.Transcript == "words in progress "
+        && parsed.IsDelta;
 });
 
 Check("Japanese to Chinese bridges through English", () =>

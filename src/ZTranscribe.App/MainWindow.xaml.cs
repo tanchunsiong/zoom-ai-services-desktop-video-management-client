@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -8,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
+using ZTranscribe.App.Services;
 using ZTranscribe.App.ViewModels;
 using ZTranscribe.Core.Models;
 
@@ -41,6 +43,7 @@ public partial class MainWindow : Window
         viewModel.Player.PositionChanged += Player_PositionChanged;
         viewModel.Player.DurationChanged += Player_DurationChanged;
         viewModel.Player.PlaybackFailed += Player_PlaybackFailed;
+        viewModel.Live.Segments.CollectionChanged += LiveSegments_CollectionChanged;
     }
 
     private void ApplyMetroIconography()
@@ -74,6 +77,7 @@ public partial class MainWindow : Window
         {
             if (tab.Header is not string header) continue;
             if (header.Contains("Queue", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE8A5", "Queue");
+            else if (header.Contains("Live", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE8D6", "Live");
             else if (header.Contains("Review", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE7B3", "Review");
             else if (header.Contains("Settings", StringComparison.Ordinal)) tab.Header = IconTabLabel("\uE713", "Settings");
         }
@@ -284,6 +288,37 @@ public partial class MainWindow : Window
     private void FilterWithoutAudio_Click(object sender, RoutedEventArgs e) =>
         ViewModel.SetQueueMediaFilter(QueueMediaFilter.WithoutAudio);
 
+    private void MicrophoneSource_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.Live.SetAudioSource(LiveAudioSource.Microphone);
+
+    private void SpeakerLoopbackSource_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.Live.SetAudioSource(LiveAudioSource.SpeakerLoopback);
+
+    private void RefreshAudioDevices_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.Live.RefreshAudioDevices();
+
+    private async void StartLive_Click(object sender, RoutedEventArgs e) =>
+        await ViewModel.Live.StartAsync();
+
+    private async void StopLive_Click(object sender, RoutedEventArgs e) =>
+        await ViewModel.Live.StopAsync();
+
+    private void ClearLiveTranscript_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.Live.ClearTranscript();
+
+    private void CopyLiveTranscript_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(ViewModel.Live.TranscriptText)) return;
+        Clipboard.SetText(ViewModel.Live.TranscriptText);
+        ViewModel.Notice = "Live transcript copied";
+    }
+
+    private void LiveSegments_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (ViewModel.Live.Segments.LastOrDefault() is not { } latest) return;
+        Dispatcher.BeginInvoke(() => LiveTranscriptList.ScrollIntoView(latest));
+    }
+
     private void ClearQueueSearch_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.QueueSearchText = "";
@@ -313,7 +348,7 @@ public partial class MainWindow : Window
         try
         {
             await ViewModel.OpenForReviewAsync(job, translated);
-            ShellTabs.SelectedIndex = 1;
+            ReviewTab.IsSelected = true;
         }
         catch (Exception exception) { ShowError(exception); }
     }
@@ -567,6 +602,8 @@ public partial class MainWindow : Window
         ViewModel.Player.PositionChanged -= Player_PositionChanged;
         ViewModel.Player.DurationChanged -= Player_DurationChanged;
         ViewModel.Player.PlaybackFailed -= Player_PlaybackFailed;
+        ViewModel.Live.Segments.CollectionChanged -= LiveSegments_CollectionChanged;
+        ViewModel.Live.Abort();
         ViewModel.Queue.StopAll();
         base.OnClosed(e);
     }

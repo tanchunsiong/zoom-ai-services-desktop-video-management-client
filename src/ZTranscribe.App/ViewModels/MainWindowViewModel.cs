@@ -37,12 +37,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         JobQueueService queue,
         ICredentialVault vault,
         ISettingsStore settingsStore,
-        VlcPlaybackService player)
+        VlcPlaybackService player,
+        ILiveScribeClient liveScribeClient)
     {
         Queue = queue;
         _vault = vault;
         _settingsStore = settingsStore;
         Player = player;
+        Live = new LiveModeViewModel(vault, liveScribeClient);
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
         SummaryOptions = [new SummaryOption(false, "Off"), new SummaryOption(true, "Summarize")];
         JobsView = CollectionViewSource.GetDefaultView(Jobs);
@@ -58,6 +60,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public JobQueueService Queue { get; }
     public VlcPlaybackService Player { get; }
+    public LiveModeViewModel Live { get; }
     public ObservableCollection<QueueJob> Jobs => Queue.Jobs;
     public ICollectionView JobsView { get; }
     public IReadOnlyList<LanguageOption> SourceLanguages => LanguageCatalog.Transcription;

@@ -58,3 +58,13 @@ public interface IZoomAiClient
     Task TestCredentialsAsync(ApiCredentials credentials, CancellationToken cancellationToken);
 }
 
+public interface ILiveScribeClient
+{
+    Task StreamAsync(
+        IAsyncEnumerable<byte[]> pcm16Frames,
+        LiveScribeOptions options,
+        ApiCredentials credentials,
+        IProgress<LiveScribeEvent>? progress,
+        CancellationToken cancellationToken);
+}
+

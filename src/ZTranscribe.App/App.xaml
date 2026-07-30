@@ -16,6 +16,7 @@
         <SolidColorBrush x:Key="BlueSoft" Color="#E7ECFA"/>
         <SolidColorBrush x:Key="Yellow" Color="#DCA62C"/>
         <SolidColorBrush x:Key="YellowSoft" Color="#FAF1D1"/>
+        <SolidColorBrush x:Key="Orange" Color="#E47A2E"/>
         <SolidColorBrush x:Key="Green" Color="#278460"/>
         <SolidColorBrush x:Key="TextPrimary" Color="#20201E"/>
         <SolidColorBrush x:Key="TextMuted" Color="#6E6A61"/>

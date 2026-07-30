@@ -29,9 +29,10 @@ public partial class App : Application
         };
         var http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(20) };
         var zoom = new ZoomAiClient(http);
+        var liveScribe = new ZoomLiveScribeClient();
         var queue = new JobQueueService(queueStore, settings, vault, new FfmpegAudioExtractor(), zoom, paths);
         _player = new VlcPlaybackService();
-        var viewModel = new MainWindowViewModel(queue, vault, settings, _player);
+        var viewModel = new MainWindowViewModel(queue, vault, settings, _player, liveScribe);
 
         try
         {
