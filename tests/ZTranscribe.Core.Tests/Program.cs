@@ -107,65 +107,56 @@ Check("Live automatic gain boosts quiet PCM without clipping", () =>
         && reading.PeakDbfs < -1;
 });
 
-Check("Live session update uses Zoom's pcm16 and VAD schema", () =>
+Check("Live session update uses Zoom's current config and audio schema", () =>
 {
     var json = ZoomLiveScribeClient.BuildSessionUpdateJson(
-        new LiveScribeOptions("ja-JP", 0.45, 250, 400, 150));
+        new LiveScribeOptions("ja-JP", """{"phrases":["Zoom AI Companion"]}"""));
     using var document = JsonDocument.Parse(json);
     var root = document.RootElement;
-    var vad = root.GetProperty("turn_detection");
+    var config = root.GetProperty("config");
     return root.GetProperty("type").GetString() == "session.update"
-        && root.GetProperty("input_audio_format").GetString() == "pcm16"
-        && root.GetProperty("language").GetString() == "ja-JP"
-        && vad.GetProperty("threshold").GetDouble() == 0.45
-        && vad.GetProperty("prefix_padding_ms").GetInt32() == 250
-        && vad.GetProperty("silence_duration_ms").GetInt32() == 400
-        && vad.GetProperty("min_pause_duration_ms").GetInt32() == 150;
+        && root.GetProperty("audio").GetProperty("format").GetString() == "pcm16"
+        && config.GetProperty("language").GetString() == "ja-JP"
+        && config.GetProperty("vocabulary").GetProperty("phrases")[0].GetString()
+            == "Zoom AI Companion"
+        && !root.TryGetProperty("turn_detection", out _)
+        && !root.TryGetProperty("language", out _)
+        && !root.TryGetProperty("vocabulary", out _)
+        && !root.TryGetProperty("input_audio_format", out _);
 });
 
-Check("Live VAD rejects unstable sub-250 ms turn endings", () =>
+Check("Live blank vocabulary is omitted from the session config", () =>
+{
+    var json = ZoomLiveScribeClient.BuildSessionUpdateJson(new LiveScribeOptions("en-US"));
+    using var document = JsonDocument.Parse(json);
+    return !document.RootElement.GetProperty("config").TryGetProperty("vocabulary", out _);
+});
+
+Check("Live vocabulary accepts wrapped JSON and normalizes pasted formatting", () =>
+{
+    var parsed = ScribeVocabularyJson.Parse(
+        "```json\n{\u201Cvocabulary\u201D:{\u201Cphrases\u201D:[\u201CServiceNow\u201D]}}\n```");
+    return parsed?.GetProperty("phrases")[0].GetString() == "ServiceNow";
+});
+
+Check("Live vocabulary extracts a full ASR config payload", () =>
+{
+    var parsed = ScribeVocabularyJson.Parse(
+        """{"config":{"language":"en-US","vocabulary":{"phrases":["AIAGW"]}}}""");
+    return parsed?.GetProperty("phrases")[0].GetString() == "AIAGW";
+});
+
+Check("Live vocabulary rejects malformed structured entries", () =>
 {
     try
     {
-        new LiveScribeOptions("en-US", 0.45, 300, 150, 100).Validate();
+        _ = ScribeVocabularyJson.Parse("""{"aliases":[{"canonical":"Zoom","variants":"AI"}]}""");
         return false;
     }
     catch (InvalidOperationException exception)
     {
-        return exception.Message.Contains("250", StringComparison.Ordinal);
+        return exception.Message.Contains("aliases", StringComparison.Ordinal);
     }
-});
-
-Check("Live forced caption cadence validates its safe range", () =>
-{
-    new LiveScribeOptions(
-        "en-US",
-        ForcedCaptionIntervalMs: 500).Validate();
-    try
-    {
-        new LiveScribeOptions(
-            "en-US",
-            ForcedCaptionIntervalMs: 250).Validate();
-        return false;
-    }
-    catch (InvalidOperationException)
-    {
-        return true;
-    }
-});
-
-Check("Live sources have distinct remembered VAD defaults", () =>
-{
-    var microphone = LiveVadPresets.Microphone;
-    var speaker = LiveVadPresets.SpeakerLoopback;
-    return microphone.Threshold == 0.5
-        && microphone.PrefixPaddingMs == 300
-        && microphone.SilenceDurationMs == 350
-        && microphone.MinPauseDurationMs == 100
-        && speaker.Threshold == 0.45
-        && speaker.PrefixPaddingMs == 300
-        && speaker.SilenceDurationMs == 250
-        && speaker.MinPauseDurationMs == 50;
 });
 
 Check("Live server events expose completed text and structured errors", () =>

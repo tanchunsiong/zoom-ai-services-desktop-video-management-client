@@ -12,11 +12,6 @@ public sealed record LiveTranscriptSegment(int Number, DateTimeOffset At, string
     public string TimeLabel => At.ToLocalTime().ToString("HH:mm:ss");
 }
 
-public sealed record CaptionCadenceOption(int Milliseconds, string Label)
-{
-    public override string ToString() => Label;
-}
-
 public enum AudioMeterState
 {
     Normal,
@@ -28,15 +23,10 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
 {
     private readonly ICredentialVault _credentialVault;
     private readonly ILiveScribeClient _liveScribeClient;
+    private readonly Func<string, Task> _persistVocabularyAsync;
     private LiveAudioSource _audioSource = LiveAudioSource.Microphone;
     private LiveAudioDeviceOption? _selectedAudioDevice;
     private LanguageOption _selectedLanguage = LanguageCatalog.Transcription[0];
-    private double _vadThreshold = LiveVadPresets.Microphone.Threshold;
-    private int _prefixPaddingMs = LiveVadPresets.Microphone.PrefixPaddingMs;
-    private int _silenceDurationMs = LiveVadPresets.Microphone.SilenceDurationMs;
-    private int _minPauseDurationMs = LiveVadPresets.Microphone.MinPauseDurationMs;
-    private LiveVadSettings _microphoneVad = LiveVadPresets.Microphone;
-    private LiveVadSettings _speakerLoopbackVad = LiveVadPresets.SpeakerLoopback;
     private string _status = "Select an audio input to begin";
     private bool _isConnecting;
     private bool _isStreaming;
@@ -47,35 +37,27 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     private AudioMeterState _inputLevelState;
     private bool _automaticGainEnabled;
     private string _interimTranscript = "";
-    private bool _forceCaptionCadenceEnabled;
-    private bool _microphoneForceCaptionCadence;
-    private bool _speakerLoopbackForceCaptionCadence = true;
-    private CaptionCadenceOption _selectedCaptionCadence;
+    private string _vocabularyJson = ScribeVocabularyJson.Sample;
+    private CancellationTokenSource? _vocabularySaveCancellation;
     private DateTimeOffset _clipHoldUntil;
     private LivePcm16Capture? _capture;
     private CancellationTokenSource? _sessionCancellation;
     private Task? _sessionTask;
 
-    public LiveModeViewModel(ICredentialVault credentialVault, ILiveScribeClient liveScribeClient)
+    public LiveModeViewModel(
+        ICredentialVault credentialVault,
+        ILiveScribeClient liveScribeClient,
+        Func<string, Task> persistVocabularyAsync)
     {
         _credentialVault = credentialVault;
         _liveScribeClient = liveScribeClient;
-        _selectedCaptionCadence = CaptionCadences.First(option => option.Milliseconds == 3_000);
+        _persistVocabularyAsync = persistVocabularyAsync;
         RefreshAudioDevices();
     }
 
     public ObservableCollection<LiveAudioDeviceOption> AudioDevices { get; } = [];
     public ObservableCollection<LiveTranscriptSegment> Segments { get; } = [];
     public IReadOnlyList<LanguageOption> Languages => LanguageCatalog.Transcription;
-    public IReadOnlyList<CaptionCadenceOption> CaptionCadences { get; } =
-    [
-        new(500, "500 ms"),
-        new(1_000, "1 second"),
-        new(2_000, "2 seconds"),
-        new(3_000, "3 seconds"),
-        new(5_000, "5 seconds"),
-        new(10_000, "10 seconds")
-    ];
 
     public LiveAudioDeviceOption? SelectedAudioDevice
     {
@@ -98,30 +80,6 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         {
             if (value is not null) Set(ref _selectedLanguage, value);
         }
-    }
-
-    public double VadThreshold
-    {
-        get => _vadThreshold;
-        set => Set(ref _vadThreshold, Math.Round(Math.Clamp(value, 0, 1), 2));
-    }
-
-    public int PrefixPaddingMs
-    {
-        get => _prefixPaddingMs;
-        set => Set(ref _prefixPaddingMs, Math.Clamp(value, 0, 5_000));
-    }
-
-    public int SilenceDurationMs
-    {
-        get => _silenceDurationMs;
-        set => Set(ref _silenceDurationMs, Math.Clamp(value, 250, 10_000));
-    }
-
-    public int MinPauseDurationMs
-    {
-        get => _minPauseDurationMs;
-        set => Set(ref _minPauseDurationMs, Math.Clamp(value, 0, 5_000));
     }
 
     public string Status
@@ -190,20 +148,39 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         set => Set(ref _automaticGainEnabled, value);
     }
 
-    public bool ForceCaptionCadenceEnabled
+    public string VocabularyJson
     {
-        get => _forceCaptionCadenceEnabled;
-        set => Set(ref _forceCaptionCadenceEnabled, value);
-    }
-
-    public CaptionCadenceOption SelectedCaptionCadence
-    {
-        get => _selectedCaptionCadence;
+        get => _vocabularyJson;
         set
         {
-            if (value is not null) Set(ref _selectedCaptionCadence, value);
+            if (!Set(ref _vocabularyJson, value ?? "")) return;
+            OnPropertyChanged(nameof(VocabularyError));
+            OnPropertyChanged(nameof(VocabularyStatus));
+            OnPropertyChanged(nameof(HasVocabularyError));
+            OnPropertyChanged(nameof(CanStart));
+            ScheduleVocabularySave();
         }
     }
+
+    public string? VocabularyError
+    {
+        get
+        {
+            try
+            {
+                _ = ScribeVocabularyJson.Parse(VocabularyJson);
+                return null;
+            }
+            catch (InvalidOperationException exception)
+            {
+                return exception.Message;
+            }
+        }
+    }
+
+    public bool HasVocabularyError => VocabularyError is not null;
+    public string VocabularyStatus => VocabularyError ??
+        (string.IsNullOrWhiteSpace(VocabularyJson) ? "Optional" : "Valid vocabulary JSON");
 
     public string InterimTranscript
     {
@@ -223,7 +200,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
 
     public bool IsSessionActive => IsConnecting || IsStreaming || IsStopping;
     public bool IsConfigurationEnabled => !IsSessionActive;
-    public bool CanStart => !IsSessionActive && SelectedAudioDevice is not null;
+    public bool CanStart => !IsSessionActive && SelectedAudioDevice is not null && !HasVocabularyError;
     public bool CanStop => (IsConnecting || IsStreaming) && !IsStopping;
     public bool HasAudioDevices => AudioDevices.Count > 0;
     public bool HasSegments => Segments.Count > 0;
@@ -231,20 +208,23 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     public string SegmentCountLabel => $"{Segments.Count:N0} completed segment{(Segments.Count == 1 ? "" : "s")}";
     public string TranscriptText => string.Join(Environment.NewLine, Segments.Select(segment => segment.Text));
 
+    public void InitializeVocabulary(string? vocabularyJson)
+    {
+        _vocabularyJson = vocabularyJson ?? ScribeVocabularyJson.Sample;
+        OnPropertyChanged(nameof(VocabularyJson));
+        OnPropertyChanged(nameof(VocabularyError));
+        OnPropertyChanged(nameof(VocabularyStatus));
+        OnPropertyChanged(nameof(HasVocabularyError));
+        OnPropertyChanged(nameof(CanStart));
+    }
+
     public void SetAudioSource(LiveAudioSource source)
     {
         if (IsSessionActive || _audioSource == source) return;
-        SaveCurrentVadSettings();
         _audioSource = source;
         OnPropertyChanged(nameof(IsMicrophoneSource));
         OnPropertyChanged(nameof(IsSpeakerLoopbackSource));
         OnPropertyChanged(nameof(AudioDeviceLabel));
-        ApplyVadSettings(source == LiveAudioSource.Microphone
-            ? _microphoneVad
-            : _speakerLoopbackVad);
-        ForceCaptionCadenceEnabled = source == LiveAudioSource.Microphone
-            ? _microphoneForceCaptionCadence
-            : _speakerLoopbackForceCaptionCadence;
         RefreshAudioDevices();
     }
 
@@ -287,15 +267,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
             return;
         }
 
-        var options = new LiveScribeOptions(
-            SelectedLanguage.Locale,
-            VadThreshold,
-            PrefixPaddingMs,
-            SilenceDurationMs,
-            MinPauseDurationMs,
-            ForceCaptionCadenceEnabled
-                ? SelectedCaptionCadence.Milliseconds
-                : 0);
+        var options = new LiveScribeOptions(SelectedLanguage.Locale, VocabularyJson);
         options.Validate();
 
         ClearTranscript();
@@ -460,31 +432,37 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         InputLevelState = AudioMeterState.Normal;
     }
 
-    private void SaveCurrentVadSettings()
+    private void ScheduleVocabularySave()
     {
-        var settings = new LiveVadSettings(
-            VadThreshold,
-            PrefixPaddingMs,
-            SilenceDurationMs,
-            MinPauseDurationMs);
-        if (_audioSource == LiveAudioSource.Microphone)
-        {
-            _microphoneVad = settings;
-            _microphoneForceCaptionCadence = ForceCaptionCadenceEnabled;
-        }
-        else
-        {
-            _speakerLoopbackVad = settings;
-            _speakerLoopbackForceCaptionCadence = ForceCaptionCadenceEnabled;
-        }
+        _vocabularySaveCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _vocabularySaveCancellation = cancellation;
+        var vocabularyJson = VocabularyJson;
+        _ = SaveVocabularyAfterDelayAsync(vocabularyJson, cancellation);
     }
 
-    private void ApplyVadSettings(LiveVadSettings settings)
+    private async Task SaveVocabularyAfterDelayAsync(
+        string vocabularyJson,
+        CancellationTokenSource cancellation)
     {
-        VadThreshold = settings.Threshold;
-        PrefixPaddingMs = settings.PrefixPaddingMs;
-        SilenceDurationMs = settings.SilenceDurationMs;
-        MinPauseDurationMs = settings.MinPauseDurationMs;
+        try
+        {
+            await Task.Delay(500, cancellation.Token);
+            await _persistVocabularyAsync(vocabularyJson);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Status = $"Vocabulary could not be saved: {exception.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_vocabularySaveCancellation, cancellation))
+                _vocabularySaveCancellation = null;
+            cancellation.Dispose();
+        }
     }
 
     private void RaiseStateProperties()

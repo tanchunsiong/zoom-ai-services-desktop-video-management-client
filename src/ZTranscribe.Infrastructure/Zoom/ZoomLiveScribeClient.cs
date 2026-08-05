@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -12,7 +11,6 @@ public sealed class ZoomLiveScribeClient : ILiveScribeClient
     internal static readonly Uri Endpoint = new("wss://api.zoom.us/v2/aiservices/scribe/live");
     private static readonly TimeSpan GracefulCloseTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan SessionUpdateTimeout = TimeSpan.FromSeconds(10);
-    private static readonly byte[] ForcedTurnSilence = new byte[3_200];
 
     public async Task StreamAsync(
         IAsyncEnumerable<byte[]> pcm16Frames,
@@ -50,12 +48,7 @@ public sealed class ZoomLiveScribeClient : ILiveScribeClient
             }
             await readyTask;
 
-            var sendTask = SendAudioAsync(
-                socket,
-                pcm16Frames,
-                options.ForcedCaptionIntervalMs,
-                options.SilenceDurationMs,
-                sessionToken);
+            var sendTask = SendAudioAsync(socket, pcm16Frames, sessionToken);
             var firstCompleted = await Task.WhenAny(sendTask, receiveTask);
             if (firstCompleted == receiveTask)
             {
@@ -104,18 +97,18 @@ public sealed class ZoomLiveScribeClient : ILiveScribeClient
     internal static string BuildSessionUpdateJson(LiveScribeOptions options)
     {
         options.Validate();
+        var config = new Dictionary<string, object?>
+        {
+            ["language"] = options.Language
+        };
+        if (ScribeVocabularyJson.Parse(options.VocabularyJson) is { } vocabulary)
+            config["vocabulary"] = vocabulary;
+
         return JsonSerializer.Serialize(new
         {
             type = "session.update",
-            input_audio_format = "pcm16",
-            language = options.Language,
-            turn_detection = new
-            {
-                threshold = options.VadThreshold,
-                prefix_padding_ms = options.PrefixPaddingMs,
-                silence_duration_ms = options.SilenceDurationMs,
-                min_pause_duration_ms = options.MinPauseDurationMs
-            }
+            config,
+            audio = new { format = "pcm16" }
         });
     }
 
@@ -177,32 +170,11 @@ public sealed class ZoomLiveScribeClient : ILiveScribeClient
     private static async Task SendAudioAsync(
         ClientWebSocket socket,
         IAsyncEnumerable<byte[]> frames,
-        int forcedCaptionIntervalMs,
-        int silenceDurationMs,
         CancellationToken cancellationToken)
     {
-        var lastForcedTurn = Stopwatch.GetTimestamp();
-        var forcedSilenceFrames = Math.Max(3, (int)Math.Ceiling((silenceDurationMs + 50) / 100d));
         await foreach (var frame in frames.WithCancellation(cancellationToken))
         {
             if (frame.Length == 0) continue;
-            if (forcedCaptionIntervalMs > 0 &&
-                Stopwatch.GetElapsedTime(lastForcedTurn) >=
-                TimeSpan.FromMilliseconds(forcedCaptionIntervalMs))
-            {
-                // Buffering continues upstream while these paced 100 ms silent frames
-                // create a VAD boundary, so no captured source audio is discarded.
-                for (var index = 0; index < forcedSilenceFrames; index++)
-                {
-                    await socket.SendAsync(
-                        ForcedTurnSilence,
-                        WebSocketMessageType.Binary,
-                        true,
-                        cancellationToken);
-                    await Task.Delay(100, cancellationToken);
-                }
-                lastForcedTurn = Stopwatch.GetTimestamp();
-            }
             await socket.SendAsync(frame, WebSocketMessageType.Binary, true, cancellationToken);
         }
     }

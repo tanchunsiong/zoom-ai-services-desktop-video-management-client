@@ -32,6 +32,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private HashSet<Guid>? _queueSearchMatches;
     private string _queueSearchText = "";
     private bool _isQueueSearchRunning;
+    private readonly SemaphoreSlim _settingsSaveLock = new(1, 1);
 
     public MainWindowViewModel(
         JobQueueService queue,
@@ -44,7 +45,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _vault = vault;
         _settingsStore = settingsStore;
         Player = player;
-        Live = new LiveModeViewModel(vault, liveScribeClient);
+        Live = new LiveModeViewModel(vault, liveScribeClient, SaveLiveVocabularyAsync);
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
         SummaryOptions = [new SummaryOption(false, "Off"), new SummaryOption(true, "Summarize")];
         JobsView = CollectionViewSource.GetDefaultView(Jobs);
@@ -191,6 +192,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public async Task InitializeAsync()
     {
         Settings = await _settingsStore.LoadAsync();
+        Live.InitializeVocabulary(Settings.LiveVocabularyJson);
         var credentials = await _vault.LoadAsync();
         ApiKey = credentials?.ApiKey ?? "";
         HasCredentials = credentials is { IsComplete: true };
@@ -236,7 +238,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             throw new InvalidOperationException("Enter the API secret when changing the API key.");
         }
-        await _settingsStore.SaveAsync(Settings);
+        await PersistSettingsAsync();
         _isInitializing = true;
         try
         {
@@ -247,6 +249,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         RaiseQueueCostProperties();
         Notice = "Settings saved securely";
         OnPropertyChanged(nameof(ApiKey));
+    }
+
+    private async Task SaveLiveVocabularyAsync(string vocabularyJson)
+    {
+        Settings.LiveVocabularyJson = vocabularyJson;
+        await PersistSettingsAsync();
+    }
+
+    private async Task PersistSettingsAsync()
+    {
+        await _settingsSaveLock.WaitAsync();
+        try { await _settingsStore.SaveAsync(Settings); }
+        finally { _settingsSaveLock.Release(); }
     }
 
     public async Task<int> RemoveJobsAsync(IReadOnlyCollection<QueueJob> jobs)

@@ -42,19 +42,17 @@ Compilation is validated locally before changes are committed and pushed.
 
 ## Live mode
 
-Open the Live tab, choose **Microphone** or **Speaker loopback**, select the input device and transcription language, then choose **Start live**. Speaker loopback captures the audio mix playing through the selected Windows output endpoint. The app normalizes either source to little-endian 16 kHz mono PCM16 audio, assembles it into approximately 100 ms frames, and sends each frame as a binary WebSocket message. VAD controls default to threshold `0.5`, prefix padding `300 ms`, silence duration `350 ms`, and minimum pause `100 ms`.
+Open the Live tab, choose **Microphone** or **Speaker loopback**, select the input device and transcription language, then choose **Start live**. Speaker loopback captures the audio mix playing through the selected Windows output endpoint. The app normalizes either source to little-endian 16 kHz mono PCM16 audio, assembles it into approximately 100 ms frames, and sends each frame as a binary WebSocket message.
 
 The input meter reports peak level in dBFS, changes from green to orange above `-12 dBFS`, and holds red for one second when the source clips. Optional **Auto gain** applies up to `8x` software gain to the streamed PCM with a `-18 dBFS` RMS target and `-1 dBFS` peak headroom; it does not change the Windows microphone or speaker volume.
 
 Choose **Stop** to stop audio capture, drain buffered frames, send `session.close`, and wait for final transcript segments before disconnecting. Live audio remains in memory and is not written to disk. When speaker output is silent, the app sends quiet keepalive frames so the Live session does not hit its idle timeout.
 
-The app waits for Zoom's `session.updated` acknowledgement before streaming audio. The **Silence ends turn** control has a `250 ms` floor because shorter values can cause Zoom Live to return an internal pipeline error; `250 ms` is the low-latency setting for fast speech.
+The app waits for Zoom's `session.updated` acknowledgement before streaming audio. The current Live session payload sends the locale and optional vocabulary under `config`, with PCM16 declared as `audio.format`.
 
-Microphone and Speaker loopback use separate remembered VAD profiles. Microphone starts at threshold `0.5`, prefix padding `300 ms`, silence duration `350 ms`, and minimum pause `100 ms`. Speaker loopback starts with a faster threshold `0.45`, prefix padding `300 ms`, silence duration `250 ms`, and minimum pause `50 ms`. Switching sources restores the last values used for that source.
+The optional vocabulary editor accepts a vocabulary object, a top-level `vocabulary` object, or a full ASR payload containing `config.vocabulary`. It validates phrases, pronunciations, and aliases locally, remembers the JSON between launches, and includes the structured vocabulary in the next Live session. A ready-to-use example is provided on first launch.
 
 The Live transcript surface follows Zoom's beta quickstart behavior: any non-final event containing `transcript`, `text`, or `delta` replaces the fixed-height **Detected words / not yet final** textbox above the segment history, and `transcription.completed` moves finalized text into the completed list below.
-
-Because some beta accounts emit only completed turns, Speaker loopback enables **Force output every 3 seconds** by default. Available cadences are `500 ms`, `1`, `2`, `3`, `5`, and `10 seconds`. The client inserts a paced VAD boundary at the selected cadence while capture continues buffering, forcing Zoom to finalize uninterrupted speech without dropping source audio. This fallback is optional and does not apply to microphone mode; very short cadences can split words more aggressively.
 
 ## Audio integrity
 
