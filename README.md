@@ -8,7 +8,7 @@ This is an open-source early working cut intended for Windows testing. The proce
 
 - Persistent drag-and-drop media queue with retry, cancel, removal, progress, and event status.
 - Case-insensitive queue search across media filenames, original and translated captions, transcript JSON, and summary sidecars, composed with the existing media-status filters.
-- Live mode with selectable microphone or Windows speaker-loopback capture, a live input meter, configurable VAD, and completed speech-turn transcripts streamed over Zoom Scribe's authenticated WebSocket endpoint.
+- Live mode with selectable microphone or Windows speaker-loopback capture, a live input meter, vocabulary JSON, interim words, completed speech turns, and optional paired Zoom translation.
 - Transcription choices limited to English (`en-US`), Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), Spanish (`es-ES`), and Italian (`it-IT`).
 - Optional cue-preserving translation. Non-English pairs such as Japanese → Chinese are routed through English because Zoom Translator requires English on one side.
 - FFmpeg/FFprobe integration that selects the first audio stream. Compatible mono/stereo codecs use `-vn -c:a copy`; incompatible or multi-channel media, including AC3 and WMA, is decoded to a Zoom-compatible 128 kbps MP3 with a stereo downmix when needed.
@@ -48,9 +48,11 @@ The input meter reports peak level in dBFS, changes from green to orange above `
 
 Choose **Stop** to stop audio capture, drain buffered frames, send `session.close`, and wait for final transcript segments before disconnecting. Live audio remains in memory and is not written to disk. When speaker output is silent, the app sends quiet keepalive frames so the Live session does not hit its idle timeout.
 
-The app waits for Zoom's `session.updated` acknowledgement before streaming audio. The current Live session payload sends the locale and optional vocabulary under `config`, with PCM16 declared as `audio.format`.
+The app waits for Zoom's `session.updated` acknowledgement before streaming audio. While Zoom transitions its deployed endpoint, the Live session payload mirrors the locale, optional vocabulary, and PCM16 format in both the accepted top-level fields and the newer nested `config` and `audio.format` schema. Neither form includes VAD configuration.
 
 The optional vocabulary editor accepts a vocabulary object, a top-level `vocabulary` object, or a full ASR payload containing `config.vocabulary`. It validates phrases, pronunciations, and aliases locally, remembers the JSON between launches, and includes the structured vocabulary in the next Live session. A ready-to-use example is provided on first launch.
+
+Live translation is optional and remembered between launches. Each completed Scribe segment is translated independently with Zoom Translator Fast mode and displayed directly below its source caption. Non-English language pairs use the existing English bridge, and segment IDs keep translations paired correctly when requests finish out of order.
 
 The Live transcript surface follows Zoom's beta quickstart behavior: any non-final event containing `transcript`, `text`, or `delta` replaces the fixed-height **Detected words / not yet final** textbox above the segment history, and `transcription.completed` moves finalized text into the completed list below.
 

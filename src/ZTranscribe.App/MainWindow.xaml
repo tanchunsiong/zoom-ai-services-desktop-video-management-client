@@ -552,6 +552,11 @@
                                     <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
                                               IsEnabled="{Binding IsConfigurationEnabled}" Height="38"/>
 
+                                    <TextBlock Text="Live translation" FontWeight="SemiBold" Margin="0,14,0,5"/>
+                                    <ComboBox ItemsSource="{Binding TranslationLanguages}"
+                                              SelectedItem="{Binding SelectedTranslationLanguage}"
+                                              IsEnabled="{Binding IsConfigurationEnabled}" Height="38"/>
+
                                     <TextBlock Text="SCRIBE VOCABULARY JSON" FontFamily="{StaticResource DisplayFont}"
                                                FontSize="11" FontWeight="Bold" Foreground="{StaticResource Blue}"
                                                Margin="0,16,0,6"/>
@@ -685,8 +690,27 @@
                                                         <TextBlock Text="{Binding TimeLabel}" Foreground="{StaticResource TextOnDarkMuted}"
                                                                    FontFamily="{StaticResource MonoFont}" FontSize="10" Margin="0,4,0,0"/>
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Text}" Foreground="{StaticResource TextOnDark}"
-                                                               TextWrapping="Wrap" FontSize="18" LineHeight="26"/>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Text}" Foreground="{StaticResource TextOnDark}"
+                                                                   TextWrapping="Wrap" FontSize="18" LineHeight="26"/>
+                                                        <TextBlock Text="{Binding Translation}" Foreground="#BFCDF5"
+                                                                   TextWrapping="Wrap" FontSize="16" LineHeight="23"
+                                                                   Margin="0,5,0,0"
+                                                                   Visibility="{Binding HasTranslation, Converter={StaticResource BooleanToVisibility}}"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,7,0,0"
+                                                                    Visibility="{Binding IsTranslating, Converter={StaticResource BooleanToVisibility}}">
+                                                            <ProgressBar Width="56" Height="4" IsIndeterminate="True"
+                                                                         Foreground="{StaticResource Yellow}" Background="#34322E"/>
+                                                            <TextBlock Text="Translating" Foreground="{StaticResource TextOnDarkMuted}"
+                                                                       FontSize="11" Margin="8,-5,0,0"/>
+                                                        </StackPanel>
+                                                        <TextBlock Foreground="{StaticResource Accent}" FontSize="11" Margin="0,6,0,0"
+                                                                   ToolTip="{Binding TranslationError}"
+                                                                   Visibility="{Binding HasTranslationError, Converter={StaticResource BooleanToVisibility}}">
+                                                            <Run Text="&#xE7BA;" FontFamily="{StaticResource IconFont}"/>
+                                                            <Run Text=" Translation failed"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>

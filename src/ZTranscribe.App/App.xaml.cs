@@ -32,7 +32,7 @@ public partial class App : Application
         var liveScribe = new ZoomLiveScribeClient();
         var queue = new JobQueueService(queueStore, settings, vault, new FfmpegAudioExtractor(), zoom, paths);
         _player = new VlcPlaybackService();
-        var viewModel = new MainWindowViewModel(queue, vault, settings, _player, liveScribe);
+        var viewModel = new MainWindowViewModel(queue, vault, settings, _player, liveScribe, zoom);
 
         try
         {

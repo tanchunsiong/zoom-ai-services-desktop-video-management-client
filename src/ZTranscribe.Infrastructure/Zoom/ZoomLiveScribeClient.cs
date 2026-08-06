@@ -101,15 +101,21 @@ public sealed class ZoomLiveScribeClient : ILiveScribeClient
         {
             ["language"] = options.Language
         };
-        if (ScribeVocabularyJson.Parse(options.VocabularyJson) is { } vocabulary)
-            config["vocabulary"] = vocabulary;
-
-        return JsonSerializer.Serialize(new
+        var payload = new Dictionary<string, object?>
         {
-            type = "session.update",
-            config,
-            audio = new { format = "pcm16" }
-        });
+            ["type"] = "session.update",
+            ["input_audio_format"] = "pcm16",
+            ["language"] = options.Language,
+            ["audio"] = new { format = "pcm16" }
+        };
+        if (ScribeVocabularyJson.Parse(options.VocabularyJson) is { } vocabulary)
+        {
+            config["vocabulary"] = vocabulary;
+            payload["vocabulary"] = vocabulary;
+        }
+        payload["config"] = config;
+
+        return JsonSerializer.Serialize(payload);
     }
 
     internal static LiveScribeEvent ParseServerEvent(string json)

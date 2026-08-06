@@ -49,6 +49,13 @@ public interface IZoomAiClient
         ApiCredentials credentials,
         CancellationToken cancellationToken);
 
+    Task<string> TranslateTextAsync(
+        string text,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken);
+
     Task<SummaryResult> SummarizeAsync(
         string text,
         string language,

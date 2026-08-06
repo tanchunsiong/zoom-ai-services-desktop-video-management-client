@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using ZTranscribe.Core.Models;
 using ZTranscribe.Core.Services;
@@ -107,7 +109,7 @@ Check("Live automatic gain boosts quiet PCM without clipping", () =>
         && reading.PeakDbfs < -1;
 });
 
-Check("Live session update uses Zoom's current config and audio schema", () =>
+Check("Live session update supports deployed and current schemas", () =>
 {
     var json = ZoomLiveScribeClient.BuildSessionUpdateJson(
         new LiveScribeOptions("ja-JP", """{"phrases":["Zoom AI Companion"]}"""));
@@ -120,16 +122,31 @@ Check("Live session update uses Zoom's current config and audio schema", () =>
         && config.GetProperty("vocabulary").GetProperty("phrases")[0].GetString()
             == "Zoom AI Companion"
         && !root.TryGetProperty("turn_detection", out _)
-        && !root.TryGetProperty("language", out _)
-        && !root.TryGetProperty("vocabulary", out _)
-        && !root.TryGetProperty("input_audio_format", out _);
+        && root.GetProperty("language").GetString() == "ja-JP"
+        && root.GetProperty("vocabulary").GetProperty("phrases")[0].GetString()
+            == "Zoom AI Companion"
+        && root.GetProperty("input_audio_format").GetString() == "pcm16";
+});
+
+Check("Live session update covers every selector locale", () =>
+{
+    return LanguageCatalog.Transcription.All(language =>
+    {
+        var json = ZoomLiveScribeClient.BuildSessionUpdateJson(
+            new LiveScribeOptions(language.Locale));
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("language").GetString() == language.Locale
+            && document.RootElement.GetProperty("config").GetProperty("language").GetString()
+                == language.Locale;
+    });
 });
 
 Check("Live blank vocabulary is omitted from the session config", () =>
 {
     var json = ZoomLiveScribeClient.BuildSessionUpdateJson(new LiveScribeOptions("en-US"));
     using var document = JsonDocument.Parse(json);
-    return !document.RootElement.GetProperty("config").TryGetProperty("vocabulary", out _);
+    return !document.RootElement.GetProperty("config").TryGetProperty("vocabulary", out _)
+        && !document.RootElement.TryGetProperty("vocabulary", out _);
 });
 
 Check("Live vocabulary accepts wrapped JSON and normalizes pasted formatting", () =>
@@ -241,6 +258,26 @@ Check("Default Scribe rate estimates cost as soon as duration is known", () =>
     };
     var comparison = JobCostEstimator.Compare(job, new UserSettings());
     return comparison.Estimate.ScribeUsd == 2m * UserSettings.DefaultScribeFastUsdPerMinute;
+});
+
+await CheckAsync("Live translation uses the Zoom Translator request contract", async () =>
+{
+    var handler = new RecordingTranslationHandler();
+    using var http = new HttpClient(handler);
+    var client = new ZoomAiClient(http);
+    var translation = await client.TranslateTextAsync(
+        "Technical terms",
+        "en-US",
+        "zh-CN",
+        new ApiCredentials("key", "secret"),
+        CancellationToken.None);
+    using var body = JsonDocument.Parse(handler.LastRequestBody ?? "{}");
+    var root = body.RootElement;
+    var config = root.GetProperty("config");
+    return translation == "Translated terms"
+        && root.GetProperty("text").GetString() == "Technical terms"
+        && config.GetProperty("source_language").GetString() == "en-US"
+        && config.GetProperty("target_languages")[0].GetString() == "zh-CN";
 });
 
 Check("Processing time estimates use duration and text volume", () =>
@@ -935,5 +972,26 @@ string DotnetHostPath()
     var runtimeDirectory = new DirectoryInfo(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory());
     var dotnetRoot = runtimeDirectory.Parent!.Parent!.Parent!.FullName;
     return Path.Combine(dotnetRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+}
+
+sealed class RecordingTranslationHandler : HttpMessageHandler
+{
+    public string? LastRequestBody { get; private set; }
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        LastRequestBody = request.Content is null
+            ? null
+            : await request.Content.ReadAsStringAsync(cancellationToken);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"result":{"translations":{"zh-CN":"Translated terms"}}}""",
+                Encoding.UTF8,
+                "application/json")
+        };
+    }
 }
 

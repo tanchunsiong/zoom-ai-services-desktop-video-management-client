@@ -7,9 +7,18 @@ using ZTranscribe.Core.Services;
 
 namespace ZTranscribe.App.ViewModels;
 
-public sealed record LiveTranscriptSegment(int Number, DateTimeOffset At, string Text)
+public sealed record LiveTranscriptSegment(
+    Guid Id,
+    int Number,
+    DateTimeOffset At,
+    string Text,
+    string? Translation = null,
+    string? TranslationError = null,
+    bool IsTranslating = false)
 {
     public string TimeLabel => At.ToLocalTime().ToString("HH:mm:ss");
+    public bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
+    public bool HasTranslationError => !string.IsNullOrWhiteSpace(TranslationError);
 }
 
 public enum AudioMeterState
@@ -23,10 +32,13 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
 {
     private readonly ICredentialVault _credentialVault;
     private readonly ILiveScribeClient _liveScribeClient;
-    private readonly Func<string, Task> _persistVocabularyAsync;
+    private readonly IZoomAiClient _zoomAiClient;
+    private readonly Func<string, string, Task> _persistLiveSettingsAsync;
+    private static readonly LanguageOption NoTranslation = new("", "No translation");
     private LiveAudioSource _audioSource = LiveAudioSource.Microphone;
     private LiveAudioDeviceOption? _selectedAudioDevice;
     private LanguageOption _selectedLanguage = LanguageCatalog.Transcription[0];
+    private LanguageOption _selectedTranslationLanguage = NoTranslation;
     private string _status = "Select an audio input to begin";
     private bool _isConnecting;
     private bool _isStreaming;
@@ -38,7 +50,8 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     private bool _automaticGainEnabled;
     private string _interimTranscript = "";
     private string _vocabularyJson = ScribeVocabularyJson.Sample;
-    private CancellationTokenSource? _vocabularySaveCancellation;
+    private CancellationTokenSource? _settingsSaveCancellation;
+    private readonly Dictionary<Guid, CancellationTokenSource> _translationCancellations = [];
     private DateTimeOffset _clipHoldUntil;
     private LivePcm16Capture? _capture;
     private CancellationTokenSource? _sessionCancellation;
@@ -47,17 +60,21 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     public LiveModeViewModel(
         ICredentialVault credentialVault,
         ILiveScribeClient liveScribeClient,
-        Func<string, Task> persistVocabularyAsync)
+        IZoomAiClient zoomAiClient,
+        Func<string, string, Task> persistLiveSettingsAsync)
     {
         _credentialVault = credentialVault;
         _liveScribeClient = liveScribeClient;
-        _persistVocabularyAsync = persistVocabularyAsync;
+        _zoomAiClient = zoomAiClient;
+        _persistLiveSettingsAsync = persistLiveSettingsAsync;
         RefreshAudioDevices();
     }
 
     public ObservableCollection<LiveAudioDeviceOption> AudioDevices { get; } = [];
     public ObservableCollection<LiveTranscriptSegment> Segments { get; } = [];
     public IReadOnlyList<LanguageOption> Languages => LanguageCatalog.Transcription;
+    public IReadOnlyList<LanguageOption> TranslationLanguages =>
+        [NoTranslation, .. LanguageCatalog.Translation.Where(option => option.Locale != SelectedLanguage.Locale)];
 
     public LiveAudioDeviceOption? SelectedAudioDevice
     {
@@ -78,7 +95,23 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         get => _selectedLanguage;
         set
         {
-            if (value is not null) Set(ref _selectedLanguage, value);
+            if (value is null || !Set(ref _selectedLanguage, value)) return;
+            if (SelectedTranslationLanguage.Locale == value.Locale)
+                SelectedTranslationLanguage = NoTranslation;
+            OnPropertyChanged(nameof(TranslationLanguages));
+        }
+    }
+
+    public LanguageOption SelectedTranslationLanguage
+    {
+        get => _selectedTranslationLanguage;
+        set
+        {
+            var normalized = value is null || value.Locale == SelectedLanguage.Locale
+                ? NoTranslation
+                : value;
+            if (!Set(ref _selectedTranslationLanguage, normalized)) return;
+            ScheduleSettingsSave();
         }
     }
 
@@ -158,7 +191,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(VocabularyStatus));
             OnPropertyChanged(nameof(HasVocabularyError));
             OnPropertyChanged(nameof(CanStart));
-            ScheduleVocabularySave();
+            ScheduleSettingsSave();
         }
     }
 
@@ -206,15 +239,22 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     public bool HasSegments => Segments.Count > 0;
     public bool HasInterimTranscript => !string.IsNullOrWhiteSpace(InterimTranscript);
     public string SegmentCountLabel => $"{Segments.Count:N0} completed segment{(Segments.Count == 1 ? "" : "s")}";
-    public string TranscriptText => string.Join(Environment.NewLine, Segments.Select(segment => segment.Text));
+    public string TranscriptText => string.Join(
+        Environment.NewLine,
+        Segments.SelectMany(segment => new[] { segment.Text, segment.Translation })
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
 
-    public void InitializeVocabulary(string? vocabularyJson)
+    public void InitializeSettings(string? vocabularyJson, string? translationLanguage)
     {
         _vocabularyJson = vocabularyJson ?? ScribeVocabularyJson.Sample;
+        _selectedTranslationLanguage = LanguageCatalog.Translation.FirstOrDefault(option =>
+            option.Locale == translationLanguage && option.Locale != SelectedLanguage.Locale) ?? NoTranslation;
         OnPropertyChanged(nameof(VocabularyJson));
         OnPropertyChanged(nameof(VocabularyError));
         OnPropertyChanged(nameof(VocabularyStatus));
         OnPropertyChanged(nameof(HasVocabularyError));
+        OnPropertyChanged(nameof(SelectedTranslationLanguage));
+        OnPropertyChanged(nameof(TranslationLanguages));
         OnPropertyChanged(nameof(CanStart));
     }
 
@@ -282,7 +322,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         var cancellation = new CancellationTokenSource();
         _capture = capture;
         _sessionCancellation = cancellation;
-        var events = new Progress<LiveScribeEvent>(HandleServerEvent);
+        var events = new Progress<LiveScribeEvent>(serverEvent => HandleServerEvent(serverEvent, credentials));
         var levels = new Progress<Pcm16LevelReading>(UpdateInputLevel);
 
         try
@@ -351,6 +391,9 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
 
     public void ClearTranscript()
     {
+        foreach (var cancellation in _translationCancellations.Values)
+            cancellation.Cancel();
+        _translationCancellations.Clear();
         Segments.Clear();
         InterimTranscript = "";
         OnPropertyChanged(nameof(HasSegments));
@@ -358,7 +401,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(TranscriptText));
     }
 
-    private void HandleServerEvent(LiveScribeEvent serverEvent)
+    private void HandleServerEvent(LiveScribeEvent serverEvent, ApiCredentials credentials)
     {
         switch (serverEvent.Type)
         {
@@ -381,10 +424,20 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
             case "transcription.completed":
                 if (!string.IsNullOrWhiteSpace(serverEvent.Transcript))
                 {
-                    Segments.Add(new LiveTranscriptSegment(
+                    var translationLanguage = SelectedTranslationLanguage.Locale;
+                    var segment = new LiveTranscriptSegment(
+                        Guid.NewGuid(),
                         Segments.Count + 1,
                         DateTimeOffset.Now,
-                        serverEvent.Transcript.Trim()));
+                        serverEvent.Transcript.Trim(),
+                        IsTranslating: translationLanguage.Length > 0);
+                    Segments.Add(segment);
+                    if (translationLanguage.Length > 0)
+                        StartSegmentTranslation(
+                            segment,
+                            SelectedLanguage.Locale,
+                            translationLanguage,
+                            credentials);
                 }
                 InterimTranscript = "";
                 OnPropertyChanged(nameof(HasSegments));
@@ -404,6 +457,73 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
                 Status = $"Zoom Live error: {serverEvent.Error ?? "Unknown error"}";
                 break;
         }
+    }
+
+    private void StartSegmentTranslation(
+        LiveTranscriptSegment segment,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials)
+    {
+        var cancellation = new CancellationTokenSource();
+        _translationCancellations[segment.Id] = cancellation;
+        _ = TranslateSegmentAsync(
+            segment,
+            sourceLanguage,
+            targetLanguage,
+            credentials,
+            cancellation);
+    }
+
+    private async Task TranslateSegmentAsync(
+        LiveTranscriptSegment segment,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var translation = await _zoomAiClient.TranslateTextAsync(
+                segment.Text,
+                sourceLanguage,
+                targetLanguage,
+                credentials,
+                cancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+            ReplaceSegment(segment.Id, current => current with
+            {
+                Translation = translation,
+                TranslationError = null,
+                IsTranslating = false
+            });
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ReplaceSegment(segment.Id, current => current with
+            {
+                TranslationError = exception.Message,
+                IsTranslating = false
+            });
+        }
+        finally
+        {
+            if (_translationCancellations.TryGetValue(segment.Id, out var activeCancellation) &&
+                ReferenceEquals(activeCancellation, cancellation))
+                _translationCancellations.Remove(segment.Id);
+            cancellation.Dispose();
+        }
+    }
+
+    private void ReplaceSegment(Guid id, Func<LiveTranscriptSegment, LiveTranscriptSegment> update)
+    {
+        var index = Segments.ToList().FindIndex(segment => segment.Id == id);
+        if (index < 0) return;
+        Segments[index] = update(Segments[index]);
+        OnPropertyChanged(nameof(TranscriptText));
     }
 
     private void UpdateInputLevel(Pcm16LevelReading reading)
@@ -432,35 +552,37 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         InputLevelState = AudioMeterState.Normal;
     }
 
-    private void ScheduleVocabularySave()
+    private void ScheduleSettingsSave()
     {
-        _vocabularySaveCancellation?.Cancel();
+        _settingsSaveCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
-        _vocabularySaveCancellation = cancellation;
+        _settingsSaveCancellation = cancellation;
         var vocabularyJson = VocabularyJson;
-        _ = SaveVocabularyAfterDelayAsync(vocabularyJson, cancellation);
+        var translationLanguage = SelectedTranslationLanguage.Locale;
+        _ = SaveSettingsAfterDelayAsync(vocabularyJson, translationLanguage, cancellation);
     }
 
-    private async Task SaveVocabularyAfterDelayAsync(
+    private async Task SaveSettingsAfterDelayAsync(
         string vocabularyJson,
+        string translationLanguage,
         CancellationTokenSource cancellation)
     {
         try
         {
             await Task.Delay(500, cancellation.Token);
-            await _persistVocabularyAsync(vocabularyJson);
+            await _persistLiveSettingsAsync(vocabularyJson, translationLanguage);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            Status = $"Vocabulary could not be saved: {exception.Message}";
+            Status = $"Live settings could not be saved: {exception.Message}";
         }
         finally
         {
-            if (ReferenceEquals(_vocabularySaveCancellation, cancellation))
-                _vocabularySaveCancellation = null;
+            if (ReferenceEquals(_settingsSaveCancellation, cancellation))
+                _settingsSaveCancellation = null;
             cancellation.Dispose();
         }
     }

@@ -69,5 +69,6 @@ public sealed class UserSettings
     public decimal SummarizerUsdPerMillionCharacters { get; set; } = DefaultSummarizerUsdPerMillionCharacters;
     public int EstimatedTranslationCharactersPerMinute { get; set; }
     public string LiveVocabularyJson { get; set; } = ScribeVocabularyJson.Sample;
+    public string LiveTranslationLanguage { get; set; } = "";
 }
 

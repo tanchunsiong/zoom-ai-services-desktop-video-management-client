@@ -39,13 +39,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ICredentialVault vault,
         ISettingsStore settingsStore,
         VlcPlaybackService player,
-        ILiveScribeClient liveScribeClient)
+        ILiveScribeClient liveScribeClient,
+        IZoomAiClient zoomAiClient)
     {
         Queue = queue;
         _vault = vault;
         _settingsStore = settingsStore;
         Player = player;
-        Live = new LiveModeViewModel(vault, liveScribeClient, SaveLiveVocabularyAsync);
+        Live = new LiveModeViewModel(vault, liveScribeClient, zoomAiClient, SaveLiveSettingsAsync);
         TranslationLanguages = [new LanguageOption("", "No translation"), .. LanguageCatalog.Translation];
         SummaryOptions = [new SummaryOption(false, "Off"), new SummaryOption(true, "Summarize")];
         JobsView = CollectionViewSource.GetDefaultView(Jobs);
@@ -192,7 +193,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public async Task InitializeAsync()
     {
         Settings = await _settingsStore.LoadAsync();
-        Live.InitializeVocabulary(Settings.LiveVocabularyJson);
+        Live.InitializeSettings(Settings.LiveVocabularyJson, Settings.LiveTranslationLanguage);
         var credentials = await _vault.LoadAsync();
         ApiKey = credentials?.ApiKey ?? "";
         HasCredentials = credentials is { IsComplete: true };
@@ -251,9 +252,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiKey));
     }
 
-    private async Task SaveLiveVocabularyAsync(string vocabularyJson)
+    private async Task SaveLiveSettingsAsync(string vocabularyJson, string translationLanguage)
     {
         Settings.LiveVocabularyJson = vocabularyJson;
+        Settings.LiveTranslationLanguage = translationLanguage;
         await PersistSettingsAsync();
     }
 

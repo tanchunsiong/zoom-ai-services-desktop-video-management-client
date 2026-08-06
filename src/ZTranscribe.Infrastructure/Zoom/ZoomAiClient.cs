@@ -60,7 +60,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         foreach (var batch in CueBatches(cues, 3600))
         {
             var body = string.Join("\n", batch.Select(x => $"[[[ZT_CUE_{x.Index:000000}]]] {Flatten(x.Text)}"));
-            var translation = await TranslateTextAsync(body, sourceLanguage, targetLanguage, credentials, cancellationToken);
+            var translation = await TranslateTextStepAsync(body, sourceLanguage, targetLanguage, credentials, cancellationToken);
             inputCharacters += translation.InputCharacters;
             outputCharacters += translation.OutputCharacters;
             foreach (Match match in CuePattern().Matches(translation.Text))
@@ -70,7 +70,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         // A marker can occasionally be changed by the model. Retry those cues individually.
         foreach (var cue in cues.Where(x => !translated.ContainsKey(x.Index)))
         {
-            var translation = await TranslateTextAsync(cue.Text, sourceLanguage, targetLanguage, credentials, cancellationToken);
+            var translation = await TranslateTextStepAsync(cue.Text, sourceLanguage, targetLanguage, credentials, cancellationToken);
             inputCharacters += translation.InputCharacters;
             outputCharacters += translation.OutputCharacters;
             translated[cue.Index] = translation.Text;
@@ -80,6 +80,31 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
             cues.Select(x => x with { Text = translated[x.Index] }).ToArray(),
             inputCharacters,
             outputCharacters);
+    }
+
+    public async Task<string> TranslateTextAsync(
+        string text,
+        string sourceLanguage,
+        string targetLanguage,
+        ApiCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        var translated = text.Trim();
+        if (translated.Length == 0) return "";
+
+        foreach (var (source, target) in TranslationRoute.Build(sourceLanguage, targetLanguage))
+        {
+            var result = await TranslateTextStepAsync(
+                translated,
+                source,
+                target,
+                credentials,
+                cancellationToken);
+            translated = result.Text.Trim();
+            if (translated.Length == 0)
+                throw new InvalidOperationException("Zoom Translator returned an empty translation.");
+        }
+        return translated;
     }
 
     public async Task<SummaryResult> SummarizeAsync(
@@ -198,7 +223,7 @@ public sealed partial class ZoomAiClient(HttpClient httpClient) : IZoomAiClient
         if (token.Count(x => x == '.') != 2) throw new InvalidOperationException("Could not create a Zoom Build token.");
     }
 
-    private async Task<TranslationTextResult> TranslateTextAsync(
+    private async Task<TranslationTextResult> TranslateTextStepAsync(
         string text,
         string sourceLanguage,
         string targetLanguage,
