@@ -54,6 +54,8 @@ The optional vocabulary editor accepts a vocabulary object, a top-level `vocabul
 
 Live translation is optional and remembered between launches. Each completed Scribe segment is translated independently with Zoom Translator Fast mode and displayed directly below its source caption. Non-English language pairs use the existing English bridge, and segment IDs keep translations paired correctly when requests finish out of order.
 
+The Live transcript toolbar can open a compact, resizable, always-on-top caption window for placement beneath another video player. It shows only the current interim or latest completed caption and its matching translation; each new result replaces the previous display. Closing this window with its standard X does not stop the Live session.
+
 The Live transcript surface follows Zoom's beta quickstart behavior: any non-final event containing `transcript`, `text`, or `delta` replaces the fixed-height **Detected words / not yet final** textbox above the segment history, and `transcription.completed` moves finalized text into the completed list below.
 
 ## Audio integrity

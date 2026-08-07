@@ -615,8 +615,10 @@
                                     <TextBlock Text="{Binding SegmentCountLabel}" Foreground="{StaticResource TextMuted}" Margin="0,4,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE8A7;"
+                                            ToolTip="Open floating captions" Click="OpenFloatingCaptions_Click"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE8C8;" ToolTip="Copy transcript"
-                                            Click="CopyLiveTranscript_Click" IsEnabled="{Binding HasSegments}"/>
+                                            Margin="6,0,0,0" Click="CopyLiveTranscript_Click" IsEnabled="{Binding HasSegments}"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE74D;" ToolTip="Clear transcript"
                                             Margin="6,0,0,0" Click="ClearLiveTranscript_Click" IsEnabled="{Binding HasSegments}"/>
                                 </StackPanel>

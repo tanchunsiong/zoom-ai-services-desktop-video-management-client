@@ -1,0 +1,26 @@
+<Window x:Class="ZTranscribe.App.FloatingCaptionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Live Captions"
+        Width="760" Height="150" MinWidth="320" MinHeight="90"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="Manual" ShowInTaskbar="False" Topmost="True"
+        Background="#090909" Foreground="#FFFDF8">
+    <Grid Background="#090909" AutomationProperties.Name="Floating live captions">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Padding="18,12">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="{Binding FloatingCaptionText}" Foreground="#FFFDF8"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           FontSize="22" FontWeight="SemiBold" LineHeight="29"/>
+                <TextBlock Text="{Binding FloatingTranslationText}" Foreground="#BFCDF5"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           FontSize="17" LineHeight="23" Margin="0,6,0,0"
+                           Visibility="{Binding HasFloatingTranslation, Converter={StaticResource BooleanToVisibility}}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

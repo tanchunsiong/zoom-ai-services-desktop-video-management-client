@@ -223,6 +223,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
             if (!Set(ref _interimTranscript, value)) return;
             OnPropertyChanged(nameof(InterimCaptionText));
             OnPropertyChanged(nameof(HasInterimTranscript));
+            RaiseFloatingCaptionProperties();
         }
     }
 
@@ -243,6 +244,13 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         Environment.NewLine,
         Segments.SelectMany(segment => new[] { segment.Text, segment.Translation })
             .Where(text => !string.IsNullOrWhiteSpace(text)));
+    public string FloatingCaptionText => HasInterimTranscript
+        ? InterimCaptionText
+        : Segments.LastOrDefault()?.Text ?? "";
+    public string FloatingTranslationText => HasInterimTranscript
+        ? ""
+        : Segments.LastOrDefault()?.Translation ?? "";
+    public bool HasFloatingTranslation => !string.IsNullOrWhiteSpace(FloatingTranslationText);
 
     public void InitializeSettings(string? vocabularyJson, string? translationLanguage)
     {
@@ -399,6 +407,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasSegments));
         OnPropertyChanged(nameof(SegmentCountLabel));
         OnPropertyChanged(nameof(TranscriptText));
+        RaiseFloatingCaptionProperties();
     }
 
     private void HandleServerEvent(LiveScribeEvent serverEvent, ApiCredentials credentials)
@@ -432,6 +441,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
                         serverEvent.Transcript.Trim(),
                         IsTranslating: translationLanguage.Length > 0);
                     Segments.Add(segment);
+                    RaiseFloatingCaptionProperties();
                     if (translationLanguage.Length > 0)
                         StartSegmentTranslation(
                             segment,
@@ -524,6 +534,14 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         if (index < 0) return;
         Segments[index] = update(Segments[index]);
         OnPropertyChanged(nameof(TranscriptText));
+        if (index == Segments.Count - 1) RaiseFloatingCaptionProperties();
+    }
+
+    private void RaiseFloatingCaptionProperties()
+    {
+        OnPropertyChanged(nameof(FloatingCaptionText));
+        OnPropertyChanged(nameof(FloatingTranslationText));
+        OnPropertyChanged(nameof(HasFloatingTranslation));
     }
 
     private void UpdateInputLevel(Pcm16LevelReading reading)

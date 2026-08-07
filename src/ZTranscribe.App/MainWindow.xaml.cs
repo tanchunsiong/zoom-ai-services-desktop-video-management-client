@@ -18,6 +18,7 @@ namespace ZTranscribe.App;
 public partial class MainWindow : Window
 {
     private QueueJob? _lastAutoScrolledJob;
+    private FloatingCaptionWindow? _floatingCaptionWindow;
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".mpg", ".mpeg",
@@ -313,6 +314,24 @@ public partial class MainWindow : Window
         ViewModel.Notice = "Live transcript copied";
     }
 
+    private void OpenFloatingCaptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_floatingCaptionWindow is { IsLoaded: true } existing)
+        {
+            if (existing.WindowState == WindowState.Minimized)
+                existing.WindowState = WindowState.Normal;
+            existing.Activate();
+            return;
+        }
+
+        var window = new FloatingCaptionWindow(ViewModel.Live);
+        window.Left = Left + Math.Max(0, (ActualWidth - window.Width) / 2);
+        window.Top = Top + Math.Max(0, ActualHeight - window.Height - 48);
+        window.Closed += (_, _) => _floatingCaptionWindow = null;
+        _floatingCaptionWindow = window;
+        window.Show();
+    }
+
     private void LiveSegments_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (ViewModel.Live.Segments.LastOrDefault() is not { } latest) return;
@@ -598,6 +617,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _floatingCaptionWindow?.Close();
+        _floatingCaptionWindow = null;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.Player.PositionChanged -= Player_PositionChanged;
         ViewModel.Player.DurationChanged -= Player_DurationChanged;
