@@ -70,5 +70,5 @@ public sealed class UserSettings
     public int EstimatedTranslationCharactersPerMinute { get; set; }
     public string LiveVocabularyJson { get; set; } = ScribeVocabularyJson.Sample;
     public string LiveTranslationLanguage { get; set; } = "";
+    public double LiveFloatingCaptionTextSize { get; set; } = 22.0;
 }
-

@@ -193,7 +193,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public async Task InitializeAsync()
     {
         Settings = await _settingsStore.LoadAsync();
-        Live.InitializeSettings(Settings.LiveVocabularyJson, Settings.LiveTranslationLanguage);
+        Live.InitializeSettings(
+            Settings.LiveVocabularyJson,
+            Settings.LiveTranslationLanguage,
+            Settings.LiveFloatingCaptionTextSize);
         var credentials = await _vault.LoadAsync();
         ApiKey = credentials?.ApiKey ?? "";
         HasCredentials = credentials is { IsComplete: true };
@@ -252,10 +255,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ApiKey));
     }
 
-    private async Task SaveLiveSettingsAsync(string vocabularyJson, string translationLanguage)
+    private async Task SaveLiveSettingsAsync(
+        string vocabularyJson,
+        string translationLanguage,
+        double floatingCaptionTextSize)
     {
         Settings.LiveVocabularyJson = vocabularyJson;
         Settings.LiveTranslationLanguage = translationLanguage;
+        Settings.LiveFloatingCaptionTextSize = Math.Clamp(floatingCaptionTextSize, 14.0, 96.0);
         await PersistSettingsAsync();
     }
 

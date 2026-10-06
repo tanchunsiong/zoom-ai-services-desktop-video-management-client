@@ -5,22 +5,43 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Live Captions"
-        Width="760" Height="150" MinWidth="320" MinHeight="90"
+        Width="760" Height="250" MinWidth="360" MinHeight="150"
         WindowStyle="SingleBorderWindow" ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="Manual" ShowInTaskbar="False" Topmost="True"
         Background="#090909" Foreground="#FFFDF8">
     <Grid Background="#090909" AutomationProperties.Name="Floating live captions">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                      Padding="18,12">
-            <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="{Binding FloatingCaptionText}" Foreground="#FFFDF8"
-                           TextWrapping="Wrap" TextAlignment="Center"
-                           FontSize="22" FontWeight="SemiBold" LineHeight="29"/>
-                <TextBlock Text="{Binding FloatingTranslationText}" Foreground="#BFCDF5"
-                           TextWrapping="Wrap" TextAlignment="Center"
-                           FontSize="17" LineHeight="23" Margin="0,6,0,0"
-                           Visibility="{Binding HasFloatingTranslation, Converter={StaticResource BooleanToVisibility}}"/>
-            </StackPanel>
-        </ScrollViewer>
+        <Grid Margin="18,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Left" Text="Text size" Foreground="#BFCDF5"
+                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock DockPanel.Dock="Right" Foreground="#BFCDF5" VerticalAlignment="Center"
+                           Text="{Binding FloatingCaptionTextSize, StringFormat={}{0:0} pt}"/>
+                <Slider Minimum="14" Maximum="96" TickFrequency="1" IsSnapToTickEnabled="True"
+                        Value="{Binding FloatingCaptionTextSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        VerticalAlignment="Center" AutomationProperties.Name="Floating caption text size"/>
+            </DockPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding FloatingCaptionEntries}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Text}" Foreground="#FFFDF8"
+                                           TextWrapping="Wrap" TextAlignment="Left" FontWeight="SemiBold"
+                                           FontSize="{Binding DataContext.FloatingCaptionTextSize, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
+                                <TextBlock Text="{Binding Translation}" Foreground="#BFCDF5"
+                                           TextWrapping="Wrap" TextAlignment="Left" Margin="0,2,0,0"
+                                           FontSize="{Binding DataContext.FloatingTranslationTextSize, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                           Visibility="{Binding HasTranslation, Converter={StaticResource BooleanToVisibility}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>

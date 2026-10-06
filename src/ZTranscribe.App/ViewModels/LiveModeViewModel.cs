@@ -21,6 +21,11 @@ public sealed record LiveTranscriptSegment(
     public bool HasTranslationError => !string.IsNullOrWhiteSpace(TranslationError);
 }
 
+public sealed record FloatingCaptionEntry(string Text, string? Translation)
+{
+    public bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
+}
+
 public enum AudioMeterState
 {
     Normal,
@@ -33,7 +38,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     private readonly ICredentialVault _credentialVault;
     private readonly ILiveScribeClient _liveScribeClient;
     private readonly IZoomAiClient _zoomAiClient;
-    private readonly Func<string, string, Task> _persistLiveSettingsAsync;
+    private readonly Func<string, string, double, Task> _persistLiveSettingsAsync;
     private static readonly LanguageOption NoTranslation = new("", "No translation");
     private LiveAudioSource _audioSource = LiveAudioSource.Microphone;
     private LiveAudioDeviceOption? _selectedAudioDevice;
@@ -50,6 +55,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
     private bool _automaticGainEnabled;
     private string _interimTranscript = "";
     private string _vocabularyJson = ScribeVocabularyJson.Sample;
+    private double _floatingCaptionTextSize = 22.0;
     private CancellationTokenSource? _settingsSaveCancellation;
     private readonly Dictionary<Guid, CancellationTokenSource> _translationCancellations = [];
     private DateTimeOffset _clipHoldUntil;
@@ -61,7 +67,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         ICredentialVault credentialVault,
         ILiveScribeClient liveScribeClient,
         IZoomAiClient zoomAiClient,
-        Func<string, string, Task> persistLiveSettingsAsync)
+        Func<string, string, double, Task> persistLiveSettingsAsync)
     {
         _credentialVault = credentialVault;
         _liveScribeClient = liveScribeClient;
@@ -252,9 +258,44 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         : Segments.LastOrDefault()?.Translation ?? "";
     public bool HasFloatingTranslation => !string.IsNullOrWhiteSpace(FloatingTranslationText);
 
-    public void InitializeSettings(string? vocabularyJson, string? translationLanguage)
+    public double FloatingCaptionTextSize
+    {
+        get => _floatingCaptionTextSize;
+        set
+        {
+            var normalized = Math.Clamp(value, 14.0, 96.0);
+            if (!Set(ref _floatingCaptionTextSize, normalized)) return;
+            OnPropertyChanged(nameof(FloatingTranslationTextSize));
+            ScheduleSettingsSave();
+        }
+    }
+
+    public double FloatingTranslationTextSize => Math.Max(12.0, FloatingCaptionTextSize * 0.77);
+
+    public IReadOnlyList<FloatingCaptionEntry> FloatingCaptionEntries
+    {
+        get
+        {
+            var result = new List<FloatingCaptionEntry>();
+            if (HasInterimTranscript)
+                result.Add(new FloatingCaptionEntry(InterimCaptionText, null));
+
+            var limit = HasInterimTranscript ? 2 : 3;
+            result.AddRange(Segments
+                .Reverse()
+                .Take(limit)
+                .Select(segment => new FloatingCaptionEntry(segment.Text, segment.Translation)));
+            return result;
+        }
+    }
+
+    public void InitializeSettings(
+        string? vocabularyJson,
+        string? translationLanguage,
+        double floatingCaptionTextSize = 22.0)
     {
         _vocabularyJson = vocabularyJson ?? ScribeVocabularyJson.Sample;
+        _floatingCaptionTextSize = Math.Clamp(floatingCaptionTextSize, 14.0, 96.0);
         _selectedTranslationLanguage = LanguageCatalog.Translation.FirstOrDefault(option =>
             option.Locale == translationLanguage && option.Locale != SelectedLanguage.Locale) ?? NoTranslation;
         OnPropertyChanged(nameof(VocabularyJson));
@@ -263,6 +304,9 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasVocabularyError));
         OnPropertyChanged(nameof(SelectedTranslationLanguage));
         OnPropertyChanged(nameof(TranslationLanguages));
+        OnPropertyChanged(nameof(FloatingCaptionTextSize));
+        OnPropertyChanged(nameof(FloatingTranslationTextSize));
+        OnPropertyChanged(nameof(FloatingCaptionEntries));
         OnPropertyChanged(nameof(CanStart));
     }
 
@@ -534,7 +578,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         if (index < 0) return;
         Segments[index] = update(Segments[index]);
         OnPropertyChanged(nameof(TranscriptText));
-        if (index == Segments.Count - 1) RaiseFloatingCaptionProperties();
+        RaiseFloatingCaptionProperties();
     }
 
     private void RaiseFloatingCaptionProperties()
@@ -542,6 +586,7 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(FloatingCaptionText));
         OnPropertyChanged(nameof(FloatingTranslationText));
         OnPropertyChanged(nameof(HasFloatingTranslation));
+        OnPropertyChanged(nameof(FloatingCaptionEntries));
     }
 
     private void UpdateInputLevel(Pcm16LevelReading reading)
@@ -577,18 +622,22 @@ public sealed class LiveModeViewModel : INotifyPropertyChanged
         _settingsSaveCancellation = cancellation;
         var vocabularyJson = VocabularyJson;
         var translationLanguage = SelectedTranslationLanguage.Locale;
-        _ = SaveSettingsAfterDelayAsync(vocabularyJson, translationLanguage, cancellation);
+        var floatingCaptionTextSize = FloatingCaptionTextSize;
+        _ = SaveSettingsAfterDelayAsync(
+            vocabularyJson, translationLanguage, floatingCaptionTextSize, cancellation);
     }
 
     private async Task SaveSettingsAfterDelayAsync(
         string vocabularyJson,
         string translationLanguage,
+        double floatingCaptionTextSize,
         CancellationTokenSource cancellation)
     {
         try
         {
             await Task.Delay(500, cancellation.Token);
-            await _persistLiveSettingsAsync(vocabularyJson, translationLanguage);
+            await _persistLiveSettingsAsync(
+                vocabularyJson, translationLanguage, floatingCaptionTextSize);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
